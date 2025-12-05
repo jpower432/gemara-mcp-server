@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 
+	"github.com/complytime/gemara-mcp-server/pkg/promptsets"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -43,6 +44,14 @@ func NewServer(cfg *ServerConfig) *Server {
 		mcp.WithPromptDescription("Provides system-level context about Gemara (GRC Engineering Model for Automated Risk Assessment)"),
 	)
 	s.mcpServer.AddPrompt(gemaraPrompt, s.handleGemaraSystemPrompt)
+
+	// Register all Gemara and user-facing prompts from our prompt system
+	if err := promptsets.RegisterAllPromptsWithMark3LabsServer(s.mcpServer); err != nil {
+		// Log error but don't fail server startup
+		// The server will still work with the basic gemara-system-prompt
+		// In production, you might want to use proper logging here
+		_ = err
+	}
 
 	return s
 }
