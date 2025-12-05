@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/your-org/gemara-mcp-server/pkg/promptsets"
+	"github.com/complytime/gemara-mcp-server/pkg/promptsets"
 )
 
 func main() {
@@ -43,13 +43,13 @@ func main() {
 	case "all":
 		fmt.Println("=== Running All Examples ===")
 		fmt.Println()
-		
+
 		fmt.Println("\n--- User-Facing Prompts ---")
 		promptsets.ExampleUserFacingPrompt()
-		
+
 		fmt.Println("\n--- Chatbot Examples ---")
 		promptsets.ExampleChatbotUsage()
-		
+
 		fmt.Println("\n--- Gemara Examples ---")
 		promptsets.ExampleGemaraUsage()
 
@@ -59,4 +59,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
