@@ -24,7 +24,7 @@ type Server struct {
 }
 
 // NewServer creates a new MCP server
-func NewServer(cfg *ServerConfig) *Server {
+func NewServer(cfg *ServerConfig) (*Server, error) {
 	s := &Server{
 		config: cfg,
 	}
@@ -46,10 +46,13 @@ func NewServer(cfg *ServerConfig) *Server {
 	s.mcpServer.AddPrompt(gemaraPrompt, s.handleGemaraSystemPrompt)
 
 	// Register Gemara Authoring Tools
-	authoringTools := tools.NewGemaraAuthoringTools()
+	authoringTools, err := tools.NewGemaraAuthoringTools()
+	if err != nil {
+		return s, err
+	}
 	authoringTools.Register(mcpServer)
 
-	return s
+	return s, nil
 }
 
 // Start starts the MCP server

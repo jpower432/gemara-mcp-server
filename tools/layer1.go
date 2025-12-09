@@ -6,22 +6,22 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/complytime/gemara-mcp-server/storage"
 	"github.com/goccy/go-yaml"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/ossf/gemara/layer1"
 )
 
-
 // handleListLayer1Guidance lists all available Layer 1 Guidance documents
-func (g *GemaraAuthoringTools) handleListLayer1Guidance(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (g *GemaraAuthoringTools) handleListLayer1Guidance(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Get list from storage if available, otherwise use in-memory cache
-	var entries []*ArtifactIndexEntry
+	var entries []*storage.ArtifactIndexEntry
 	if g.storage != nil {
 		entries = g.storage.List(1)
 	} else {
 		// Fallback to in-memory cache
 		for guidanceID, guidance := range g.layer1Guidance {
-			entries = append(entries, &ArtifactIndexEntry{
+			entries = append(entries, &storage.ArtifactIndexEntry{
 				ID:    guidanceID,
 				Layer: 1,
 				Title: guidance.Metadata.Title,
@@ -31,7 +31,7 @@ func (g *GemaraAuthoringTools) handleListLayer1Guidance(ctx context.Context, req
 
 	totalCount := len(entries)
 	if totalCount == 0 {
-		return mcp.NewToolResultText("No Layer 1 Guidance documents available.\n\nUse store_layer1_yaml to store guidance documents or load_layer1_from_file to load from disk."), nil
+		return mcp.NewToolResultText("No Layer 1 Guidance documents available.\n\nUse store_layer1_yaml to store guidance documents."), nil
 	}
 
 	result := fmt.Sprintf("# Available Layer 1 Guidance Documents\n\n")
@@ -75,7 +75,7 @@ func (g *GemaraAuthoringTools) handleListLayer1Guidance(ctx context.Context, req
 }
 
 // handleGetLayer1Guidance gets detailed information about a specific Layer 1 Guidance
-func (g *GemaraAuthoringTools) handleGetLayer1Guidance(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (g *GemaraAuthoringTools) handleGetLayer1Guidance(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	guidanceID := request.GetString("guidance_id", "")
 	_ = request.GetString("output_format", "yaml") // Output format handled via JSON marshaling
 
@@ -110,48 +110,9 @@ func (g *GemaraAuthoringTools) handleGetLayer1Guidance(ctx context.Context, requ
 	return mcp.NewToolResultText(output), nil
 }
 
-// handleLoadLayer1FromFile loads a Layer 1 Guidance document from a file using Gemara library
-func (g *GemaraAuthoringTools) handleLoadLayer1FromFile(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	filePath := request.GetString("file_path", "")
-	if filePath == "" {
-		return mcp.NewToolResultError("file_path is required"), nil
-	}
-
-	guidance := &layer1.GuidanceDocument{}
-	if err := guidance.LoadFile(filePath); err != nil {
-		return mcp.NewToolResultErrorf("Failed to load Layer 1 Guidance from file: %v", err), nil
-	}
-
-	if guidance.Metadata.Id == "" {
-		return mcp.NewToolResultError("Loaded guidance document missing metadata.id"), nil
-	}
-
-	// Store the loaded guidance in Gemara types storage
-	g.layer1Guidance[guidance.Metadata.Id] = guidance
-	
-	// Also store to disk if storage is available
-	if g.storage != nil {
-		if err := g.storage.Add(1, guidance.Metadata.Id, guidance); err != nil {
-			// Log error but don't fail the operation
-			fmt.Printf("Warning: Failed to store Layer 1 guidance to disk: %v\n", err)
-		}
-	}
-
-	result := fmt.Sprintf("Successfully loaded Layer 1 Guidance:\n")
-	result += fmt.Sprintf("- ID: %s\n", guidance.Metadata.Id)
-	result += fmt.Sprintf("- Title: %s\n", guidance.Metadata.Title)
-	result += fmt.Sprintf("- Description: %s\n", guidance.Metadata.Description)
-	if guidance.Metadata.Version != "" {
-		result += fmt.Sprintf("- Version: %s\n", guidance.Metadata.Version)
-	}
-	result += fmt.Sprintf("\nUse get_layer1_guidance with ID '%s' to retrieve full details.\n", guidance.Metadata.Id)
-
-	return mcp.NewToolResultText(result), nil
-}
-
 // handleStoreLayer1YAML stores raw YAML content with CUE validation
 // This is the preferred method for storing Layer 1 artifacts as it preserves all YAML content without data loss
-func (g *GemaraAuthoringTools) handleStoreLayer1YAML(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (g *GemaraAuthoringTools) handleStoreLayer1YAML(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	yamlContent := request.GetString("yaml_content", "")
 	if yamlContent == "" {
 		return mcp.NewToolResultError("yaml_content is required"), nil
@@ -200,8 +161,12 @@ func (g *GemaraAuthoringTools) handleStoreLayer1YAML(ctx context.Context, reques
 		return mcp.NewToolResultErrorf("Failed to store YAML: %v", err), nil
 	}
 
-	// Optionally load into memory for querying (lazy loading)
-	// We'll load it on-demand when queried
+	// Load into memory cache for immediate querying
+	if retrieved, err := g.storage.Retrieve(1, storedID); err == nil {
+		if guidance, ok := retrieved.(*layer1.GuidanceDocument); ok {
+			g.layer1Guidance[storedID] = guidance
+		}
+	}
 
 	result := fmt.Sprintf("Successfully stored and validated Layer 1 Guidance:\n")
 	result += fmt.Sprintf("- ID: %s\n", storedID)
@@ -212,23 +177,29 @@ func (g *GemaraAuthoringTools) handleStoreLayer1YAML(ctx context.Context, reques
 	return mcp.NewToolResultText(result), nil
 }
 
-// handleSearchLayer1Guidance searches Layer 1 Guidance documents by name or description
-func (g *GemaraAuthoringTools) handleSearchLayer1Guidance(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+// handleSearchLayer1Guidance searches Layer 1 Guidance documents by name, description, or author
+// Can optionally filter by applicability scope (boundaries, technologies, providers)
+// Uses storage index for efficient filtering before loading full documents
+func (g *GemaraAuthoringTools) handleSearchLayer1Guidance(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	searchTerm := request.GetString("search_term", "")
+	boundaries := g.extractStringArray(request, "boundaries")
+	technologies := g.extractStringArray(request, "technologies")
+	providers := g.extractStringArray(request, "providers")
 	outputFormat := request.GetString("output_format", "yaml")
 
-	if searchTerm == "" {
-		return mcp.NewToolResultError("search_term is required"), nil
+	// Allow empty search_term if scoping filters are provided
+	if searchTerm == "" && len(boundaries) == 0 && len(technologies) == 0 && len(providers) == 0 {
+		return mcp.NewToolResultError("search_term is required, or provide at least one scoping filter (boundaries, technologies, providers)"), nil
 	}
 
-	// Get all Layer 1 guidance entries
-	var entries []*ArtifactIndexEntry
+	// Get all Layer 1 guidance entries from storage index (fast)
+	var entries []*storage.ArtifactIndexEntry
 	if g.storage != nil {
 		entries = g.storage.List(1)
 	} else {
 		// Fallback to in-memory cache
 		for guidanceID, guidance := range g.layer1Guidance {
-			entries = append(entries, &ArtifactIndexEntry{
+			entries = append(entries, &storage.ArtifactIndexEntry{
 				ID:    guidanceID,
 				Layer: 1,
 				Title: guidance.Metadata.Title,
@@ -236,12 +207,27 @@ func (g *GemaraAuthoringTools) handleSearchLayer1Guidance(ctx context.Context, r
 		}
 	}
 
-	// Search through entries
-	var matches []*layer1.GuidanceDocument
+	// First pass: filter by title match in index (fast, no need to load full documents)
+	// If search_term is empty, use all entries (scoping-only search)
 	searchLower := strings.ToLower(searchTerm)
+	var candidateEntries []*storage.ArtifactIndexEntry
+	if searchTerm == "" {
+		// Scoping-only: use all entries
+		candidateEntries = entries
+	} else {
+		// Text search: filter by title or ID from index
+		for _, entry := range entries {
+			if strings.Contains(strings.ToLower(entry.Title), searchLower) ||
+				strings.Contains(strings.ToLower(entry.ID), searchLower) {
+				candidateEntries = append(candidateEntries, entry)
+			}
+		}
+	}
 
-	for _, entry := range entries {
-		// Get full guidance document
+	// Second pass: load full documents only for candidates and check description/author
+	var matches []*layer1.GuidanceDocument
+	for _, entry := range candidateEntries {
+		// Get full guidance document (from cache or storage)
 		var guidance *layer1.GuidanceDocument
 		if gd, exists := g.layer1Guidance[entry.ID]; exists {
 			guidance = gd
@@ -259,18 +245,75 @@ func (g *GemaraAuthoringTools) handleSearchLayer1Guidance(ctx context.Context, r
 			continue
 		}
 
-		// Search in title, description, and author
-		titleMatch := strings.Contains(strings.ToLower(guidance.Metadata.Title), searchLower)
-		descMatch := strings.Contains(strings.ToLower(guidance.Metadata.Description), searchLower)
-		authorMatch := strings.Contains(strings.ToLower(guidance.Metadata.Author), searchLower)
+		// Apply scoping filters if provided
+		if len(boundaries) > 0 || len(technologies) > 0 || len(providers) > 0 {
+			if !g.matchesLayer1Applicability(guidance, technologies, boundaries, providers) {
+				continue
+			}
+		}
 
-		if titleMatch || descMatch || authorMatch {
+		// If search_term is empty (scoping-only), include all that passed scoping
+		// Otherwise, already matched on title/ID in first pass
+		if searchTerm == "" {
+			matches = append(matches, guidance)
+		} else {
+			// Already matched on title/ID in first pass, include it
 			matches = append(matches, guidance)
 		}
 	}
 
+	// If no matches from index, and we have a search term, do a full search (slower but more thorough)
+	if len(matches) == 0 && searchTerm != "" {
+		for _, entry := range entries {
+			var guidance *layer1.GuidanceDocument
+			if gd, exists := g.layer1Guidance[entry.ID]; exists {
+				guidance = gd
+			} else if g.storage != nil {
+				if retrieved, err := g.storage.Retrieve(1, entry.ID); err == nil {
+					if gd, ok := retrieved.(*layer1.GuidanceDocument); ok {
+						guidance = gd
+						g.layer1Guidance[entry.ID] = guidance
+					}
+				}
+			}
+
+			if guidance == nil {
+				continue
+			}
+
+			// Full text search
+			titleMatch := strings.Contains(strings.ToLower(guidance.Metadata.Title), searchLower)
+			descMatch := strings.Contains(strings.ToLower(guidance.Metadata.Description), searchLower)
+			authorMatch := strings.Contains(strings.ToLower(guidance.Metadata.Author), searchLower)
+
+			if titleMatch || descMatch || authorMatch {
+				// Apply scoping filters if provided
+				if len(boundaries) > 0 || len(technologies) > 0 || len(providers) > 0 {
+					if !g.matchesLayer1Applicability(guidance, technologies, boundaries, providers) {
+						continue
+					}
+				}
+				matches = append(matches, guidance)
+			}
+		}
+	}
+
 	if len(matches) == 0 {
-		return mcp.NewToolResultText(fmt.Sprintf("No Layer 1 Guidance documents found matching '%s'.\n\nUse list_layer1_guidance to see all available guidance documents.", searchTerm)), nil
+		var filterParts []string
+		if searchTerm != "" {
+			filterParts = append(filterParts, fmt.Sprintf("search term '%s'", searchTerm))
+		}
+		if len(boundaries) > 0 {
+			filterParts = append(filterParts, fmt.Sprintf("boundaries %v", boundaries))
+		}
+		if len(technologies) > 0 {
+			filterParts = append(filterParts, fmt.Sprintf("technologies %v", technologies))
+		}
+		if len(providers) > 0 {
+			filterParts = append(filterParts, fmt.Sprintf("providers %v", providers))
+		}
+		filterMsg := strings.Join(filterParts, ", ")
+		return mcp.NewToolResultText(fmt.Sprintf("No Layer 1 Guidance documents found matching %s.\n\nUse list_layer1_guidance to see all available guidance documents.", filterMsg)), nil
 	}
 
 	// Format results
@@ -283,8 +326,26 @@ func (g *GemaraAuthoringTools) handleSearchLayer1Guidance(ctx context.Context, r
 	}
 
 	// YAML format (default)
-	result := fmt.Sprintf("# Search Results for '%s'\n\n", searchTerm)
-	result += fmt.Sprintf("Found %d matching guidance document(s):\n\n", len(matches))
+	result := "# Search Results"
+	if searchTerm != "" {
+		result += fmt.Sprintf(" for '%s'", searchTerm)
+	}
+	result += "\n\n"
+	result += fmt.Sprintf("Found %d matching guidance document(s)", len(matches))
+	var filterParts []string
+	if len(boundaries) > 0 {
+		filterParts = append(filterParts, fmt.Sprintf("boundaries: %v", boundaries))
+	}
+	if len(technologies) > 0 {
+		filterParts = append(filterParts, fmt.Sprintf("technologies: %v", technologies))
+	}
+	if len(providers) > 0 {
+		filterParts = append(filterParts, fmt.Sprintf("providers: %v", providers))
+	}
+	if len(filterParts) > 0 {
+		result += fmt.Sprintf(" (filtered by %s)", strings.Join(filterParts, ", "))
+	}
+	result += "\n\n"
 
 	for _, guidance := range matches {
 		result += fmt.Sprintf("## %s\n", guidance.Metadata.Title)
@@ -302,5 +363,3 @@ func (g *GemaraAuthoringTools) handleSearchLayer1Guidance(ctx context.Context, r
 
 	return mcp.NewToolResultText(result), nil
 }
-
-// REMOVED: handleCreateLayer1FromStructure - Use store_layer1_yaml instead

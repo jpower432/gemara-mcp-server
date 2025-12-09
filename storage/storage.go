@@ -1,4 +1,4 @@
-package tools
+package storage
 
 import (
 	"encoding/json"
@@ -277,7 +277,7 @@ func (s *ArtifactStorage) StoreRawYAML(layer int, yamlContent string) (string, e
 	// Extract ID from metadata
 	var artifactID string
 	var title string
-	
+
 	if meta, ok := metadata["metadata"].(map[string]interface{}); ok {
 		if id, ok := meta["id"].(string); ok {
 			artifactID = id

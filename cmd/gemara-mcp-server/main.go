@@ -19,7 +19,10 @@ var rootCmd = &cobra.Command{
 		cfg := mcp.ServerConfig{
 			Version: version.GetVersion(),
 		}
-		server := mcp.NewServer(&cfg)
+		server, err := mcp.NewServer(&cfg)
+		if err != nil {
+			return err
+		}
 		return server.Start()
 	},
 }
@@ -34,7 +37,7 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
-	
+
 	// Set up structured logging with slog
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
