@@ -18,14 +18,21 @@ When creating a Layer 1 Guidance document, follow these steps:
 A complete Layer 1 Guidance document should include:
 
 ```yaml
+title: "Guidance Document Title"
+document-type: "Standard"  # Options: Standard, Regulation, Best Practice, Framework
+
 metadata:
   id: unique-guidance-id
-  title: "Guidance Document Title"
   description: "Description of the guidance"
   author: "Author or Organization"
   version: "1.0"
   publication-date: "2024-01-01"  # ISO 8601 format
-  document-type: "Standard"  # Options: Framework, Standard, Guideline
+  mapping-references:  # Optional: References to external standards/frameworks (must follow mapping.cue schema)
+    - id: "standard-id"  # Required: Unique identifier for the standard/framework
+      title: "Standard Title"  # Required: Title of the standard/framework
+      version: "1.0"  # Required: Version of the standard/framework
+      description: "Description of the standard/framework"  # Required: Description
+      url: "https://example.com/standard"  # Optional: URL to the standard/framework
   applicability:
     industry-sectors:
       - "Financial Services"
@@ -33,7 +40,7 @@ metadata:
     technology-domains:
       - "Cloud Computing"
       - "Network Security"
-    jurisdictions: 
+    jurisdictions:
       - "United States"
       - "European Union"
 
@@ -61,9 +68,13 @@ categories:
 
 ## Key Fields
 
+- **title**: Required title for the document (root level, not in metadata)
+- **document-type**: Required document type (root level) - Options: Standard, Regulation, Best Practice, Framework
 - **metadata.id**: Unique identifier (lowercase, hyphens, no spaces)
-- **metadata.title**: Human-readable title
 - **metadata.description**: Brief description
+- **metadata.mapping-references**: Optional references to external standards/frameworks (must follow mapping.cue schema structure)
+  - Each mapping reference must include: `id`, `title`, `version`, `description`, and optionally `url`
+  - The structure must conform to the `MappingReference` type defined in `mapping.cue` schema
 - **categories**: Array of categories containing guidelines
 - **guidelines**: Array of guidelines within each category
 - **guideline-parts**: Optional detailed parts within guidelines
@@ -81,13 +92,17 @@ Before storing, always validate your YAML:
 ### Simple Guidance (minimal structure)
 
 ```yaml
+title: "Simple Guidance"
+document-type: "Framework"
+
 metadata:
   id: simple-guidance
-  title: "Simple Guidance"
   description: "A simple guidance document"
+
 categories:
   - id: default
     title: "Guidelines"
+    description: "Default category for guidelines"
     guidelines:
       - id: gl-1
         title: "First Guideline"
@@ -120,3 +135,17 @@ For complete schema details, use:
 
 - `get_layer_schema_info` with `layer=1`
 - Official schema: https://github.com/ossf/gemara/blob/main/schemas/layer-1.cue
+- Common schemas (used by all layers): `gemara://schema/common/metadata`, `gemara://schema/common/mapping`, `gemara://schema/common/base`
+
+### Important: Mapping References Schema
+
+The `metadata.mapping-references` field must conform to the `MappingReference` type defined in the `mapping.cue` schema. Access the schema via:
+- MCP resource: `gemara://schema/common/mapping`
+- GitHub: https://github.com/ossf/gemara/blob/main/schemas/common/mapping.cue
+
+Each mapping reference must include:
+- **id** (string, required): Unique identifier for the standard/framework
+- **title** (string, required): Title of the standard/framework
+- **version** (string, required): Version of the standard/framework
+- **description** (string, required): Description of the standard/framework
+- **url** (string, optional): URL to the standard/framework documentation
