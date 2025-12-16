@@ -28,12 +28,8 @@ func (g *GemaraAuthoringTools) registerTools() []server.ServerTool {
 	tools = append(tools, g.newSearchLayer3PoliciesTool())
 	tools = append(tools, g.newStoreLayer3YAMLTool())
 
+	// Artifact search
 	tools = append(tools, g.newFindApplicableArtifactsTool())
-
-	// Export Tools
-	tools = append(tools, g.newExportLayer1ToOSCALTool())
-	tools = append(tools, g.newExportLayer2ToOSCALTool())
-	tools = append(tools, g.newExportLayer4ToSARIFTool())
 
 	return tools
 }
@@ -215,45 +211,5 @@ func (g *GemaraAuthoringTools) newFindApplicableArtifactsTool() server.ServerToo
 			mcp.WithString("output_format", mcp.Description("Output format: 'yaml' (default) or 'json'.")),
 		),
 		Handler: g.handleFindApplicableArtifacts,
-	}
-}
-
-// Export Tool Definitions
-
-func (g *GemaraAuthoringTools) newExportLayer1ToOSCALTool() server.ServerTool {
-	return server.ServerTool{
-		Tool: mcp.NewTool(
-			"export_layer1_to_oscal",
-			mcp.WithDescription("Export a Layer 1 Guidance document to OSCAL format. Returns OSCAL Profile or Catalog JSON."),
-			mcp.WithString("guidance_id", mcp.Description("The unique identifier of the Layer 1 Guidance document to export."), mcp.Required()),
-			mcp.WithString("output_format", mcp.Description("OSCAL output format: 'profile' (default) or 'catalog'.")),
-			mcp.WithString("guidance_doc_href", mcp.Description("Optional HREF for the guidance document (used in profile format).")),
-		),
-		Handler: g.handleExportLayer1ToOSCAL,
-	}
-}
-
-func (g *GemaraAuthoringTools) newExportLayer2ToOSCALTool() server.ServerTool {
-	return server.ServerTool{
-		Tool: mcp.NewTool(
-			"export_layer2_to_oscal",
-			mcp.WithDescription("Export a Layer 2 Control Catalog to OSCAL format. Returns OSCAL Catalog JSON."),
-			mcp.WithString("catalog_id", mcp.Description("The unique identifier of the Layer 2 Catalog to export."), mcp.Required()),
-			mcp.WithString("control_href", mcp.Description("Optional HREF for the control catalog.")),
-		),
-		Handler: g.handleExportLayer2ToOSCAL,
-	}
-}
-
-func (g *GemaraAuthoringTools) newExportLayer4ToSARIFTool() server.ServerTool {
-	return server.ServerTool{
-		Tool: mcp.NewTool(
-			"export_layer4_to_sarif",
-			mcp.WithDescription("Export a Layer 4 Evaluation Log to SARIF format. Returns SARIF JSON."),
-			mcp.WithString("evaluation_id", mcp.Description("The unique identifier of the Layer 4 Evaluation Log to export."), mcp.Required()),
-			mcp.WithString("artifact_uri", mcp.Description("Optional URI for the artifact being evaluated.")),
-			mcp.WithString("catalog_id", mcp.Description("Optional Layer 2 Catalog ID to include control and requirement details in SARIF output.")),
-		),
-		Handler: g.handleExportLayer4ToSARIF,
 	}
 }

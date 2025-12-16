@@ -21,7 +21,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "gemara-mcp-server",
 	Short: "Gemara CUE MCP Server",
-	Long:  "A Model Context Protocol server for Gemara (GRC Engineering Model for Automated Risk Assessment)",
+	Long:  "A Model Context Protocol server for Gemara (GRC Engineering Model for Automated Risk Assessment)\n\n⚠️  PROTOTYPE: This is a prototype implementation. The API, behavior, and data structures may change without notice.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Set up structured logging with slog (after flags are parsed)
 		logLevel := slog.LevelInfo
@@ -35,6 +35,7 @@ var rootCmd = &cobra.Command{
 		slog.SetDefault(logger)
 
 		// Log startup information for debugging
+		slog.Warn("⚠️  PROTOTYPE: This is a prototype implementation. The API, behavior, and data structures may change without notice.")
 		slog.Info("Starting Gemara MCP Server",
 			"version", version.GetVersion(),
 			"working_dir", getWorkingDir(),

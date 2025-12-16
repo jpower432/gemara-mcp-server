@@ -1,5 +1,7 @@
 # Gemara MCP Server
 
+> **⚠️ Prototype Disclaimer:** This is a prototype implementation. The API, behavior, and data structures may change without notice. Use at your own risk.
+
 A Model Context Protocol (MCP) server for [Gemara](https://github.com/ossf/gemara) - the GRC Engineering Model for Automated Risk Assessment. This server provides tools and prompts for creating, validating, and managing Gemara artifacts (Layer 1 Guidance, Layer 2 Controls, and Layer 3 Policies).
 
 ## Overview

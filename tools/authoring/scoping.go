@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/complytime/gemara-mcp-server/internal/consts"
 	"github.com/complytime/gemara-mcp-server/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/ossf/gemara/layer1"
@@ -23,34 +24,9 @@ func (g *GemaraAuthoringTools) handleFindApplicableArtifacts(ctx context.Context
 	// Find applicable Layer 1 Guidance documents
 	// Use storage index to get all Layer 1 artifacts, then load and check applicability
 	var applicableLayer1 []string
-	var layer1Entries []*storage.ArtifactIndexEntry
-	if g.storage != nil {
-		layer1Entries = g.storage.List(1)
-	} else {
-		// Fallback to in-memory cache
-		for guidanceID, guidance := range g.layer1Guidance {
-			layer1Entries = append(layer1Entries, &storage.ArtifactIndexEntry{
-				ID:    guidanceID,
-				Layer: 1,
-				Title: guidance.Metadata.Title,
-			})
-		}
-	}
-
+	layer1Entries := g.getLayerEntries(consts.Layer1)
 	for _, entry := range layer1Entries {
-		// Get guidance from cache or storage
-		var guidance *layer1.GuidanceDocument
-		if gd, exists := g.layer1Guidance[entry.ID]; exists {
-			guidance = gd
-		} else if g.storage != nil {
-			if retrieved, err := g.storage.Retrieve(1, entry.ID); err == nil {
-				if gd, ok := retrieved.(*layer1.GuidanceDocument); ok {
-					guidance = gd
-					g.layer1Guidance[entry.ID] = guidance
-				}
-			}
-		}
-
+		guidance := g.loadLayer1Guidance(entry.ID)
 		if guidance != nil && g.matchesLayer1Applicability(guidance, technologies, boundaries, providers) {
 			applicableLayer1 = append(applicableLayer1, entry.ID)
 		}
@@ -65,33 +41,9 @@ func (g *GemaraAuthoringTools) handleFindApplicableArtifacts(ctx context.Context
 	var applicableLayer2 []controlRef
 
 	// Use storage index to get all Layer 2 catalogs
-	var layer2Entries []*storage.ArtifactIndexEntry
-	if g.storage != nil {
-		layer2Entries = g.storage.List(2)
-	} else {
-		// Fallback to in-memory cache
-		for catalogID, catalog := range g.layer2Catalogs {
-			layer2Entries = append(layer2Entries, &storage.ArtifactIndexEntry{
-				ID:    catalogID,
-				Layer: 2,
-				Title: catalog.Metadata.Title,
-			})
-		}
-	}
-
+	layer2Entries := g.getLayerEntries(consts.Layer2)
 	for _, entry := range layer2Entries {
-		// Get catalog from cache or storage
-		var catalog *layer2.Catalog
-		if c, exists := g.layer2Catalogs[entry.ID]; exists {
-			catalog = c
-		} else if g.storage != nil {
-			if retrieved, err := g.storage.Retrieve(2, entry.ID); err == nil {
-				if c, ok := retrieved.(*layer2.Catalog); ok {
-					catalog = c
-					g.layer2Catalogs[entry.ID] = catalog
-				}
-			}
-		}
+		catalog := g.loadLayer2Catalog(entry.ID)
 
 		if catalog == nil {
 			continue
@@ -207,6 +159,67 @@ func (g *GemaraAuthoringTools) handleFindApplicableArtifacts(ctx context.Context
 	result.WriteString(fmt.Sprintf("- **Total Applicable Artifacts**: %d\n", len(applicableLayer1)+len(applicableLayer2)))
 
 	return mcp.NewToolResultText(result.String()), nil
+}
+
+// getLayerEntries gets entries for a given layer from storage or cache
+func (g *GemaraAuthoringTools) getLayerEntries(layer int) []*storage.ArtifactIndexEntry {
+	if g.storage != nil {
+		return g.storage.List(layer)
+	}
+
+	// Fallback to in-memory cache
+	var entries []*storage.ArtifactIndexEntry
+	switch layer {
+	case consts.Layer1:
+		for guidanceID, guidance := range g.layer1Guidance {
+			entries = append(entries, &storage.ArtifactIndexEntry{
+				ID:    guidanceID,
+				Layer: consts.Layer1,
+				Title: guidance.Metadata.Title,
+			})
+		}
+	case consts.Layer2:
+		for catalogID, catalog := range g.layer2Catalogs {
+			entries = append(entries, &storage.ArtifactIndexEntry{
+				ID:    catalogID,
+				Layer: consts.Layer2,
+				Title: catalog.Metadata.Title,
+			})
+		}
+	}
+	return entries
+}
+
+// loadLayer1Guidance loads a Layer 1 Guidance document from cache or storage
+func (g *GemaraAuthoringTools) loadLayer1Guidance(guidanceID string) *layer1.GuidanceDocument {
+	if gd, exists := g.layer1Guidance[guidanceID]; exists {
+		return gd
+	}
+	if g.storage != nil {
+		if retrieved, err := g.storage.Retrieve(consts.Layer1, guidanceID); err == nil {
+			if gd, ok := retrieved.(*layer1.GuidanceDocument); ok {
+				g.layer1Guidance[guidanceID] = gd
+				return gd
+			}
+		}
+	}
+	return nil
+}
+
+// loadLayer2Catalog loads a Layer 2 Catalog from cache or storage
+func (g *GemaraAuthoringTools) loadLayer2Catalog(catalogID string) *layer2.Catalog {
+	if c, exists := g.layer2Catalogs[catalogID]; exists {
+		return c
+	}
+	if g.storage != nil {
+		if retrieved, err := g.storage.Retrieve(consts.Layer2, catalogID); err == nil {
+			if c, ok := retrieved.(*layer2.Catalog); ok {
+				g.layer2Catalogs[catalogID] = c
+				return c
+			}
+		}
+	}
+	return nil
 }
 
 // findControlFamily finds a control family by ID

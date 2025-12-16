@@ -9,6 +9,7 @@ import (
 	"cuelang.org/go/cue/cuecontext"
 	"cuelang.org/go/cue/load"
 	"cuelang.org/go/encoding/yaml"
+	"github.com/complytime/gemara-mcp-server/internal/consts"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -22,8 +23,8 @@ func (g *GemaraInfoTools) handleValidateGemaraYAML(ctx context.Context, request 
 		return mcp.NewToolResultError("yaml_content is required"), nil
 	}
 
-	if layer < 1 || layer > 4 {
-		return mcp.NewToolResultErrorf("layer must be between 1 and 4, got %d", layer), nil
+	if layer < consts.MinLayer || layer > consts.MaxLayer {
+		return mcp.NewToolResultErrorf("layer must be between %d and %d, got %d", consts.MinLayer, consts.MaxLayer, layer), nil
 	}
 
 	// Perform CUE validation
@@ -90,9 +91,9 @@ func (g *GemaraInfoTools) PerformCUEValidation(yamlContent string, layer int) Va
 	}
 
 	// Load layer-specific schema using resource system
-	if layer < 1 || layer > 4 {
+	if layer < consts.MinLayer || layer > consts.MaxLayer {
 		result.Valid = false
-		result.Error = fmt.Sprintf("Invalid layer: %d (must be 1-4)", layer)
+		result.Error = fmt.Sprintf("Invalid layer: %d (must be %d-%d)", layer, consts.MinLayer, consts.MaxLayer)
 		return result
 	}
 
@@ -147,13 +148,13 @@ func (g *GemaraInfoTools) PerformCUEValidation(yamlContent string, layer int) Va
 	// 6. Narrow down the schema based on the Layer
 	var entryPoint cue.Value
 	switch layer {
-	case 1:
+	case consts.Layer1:
 		entryPoint = schema.LookupPath(cue.ParsePath("#GuidanceDocument"))
-	case 2:
+	case consts.Layer2:
 		entryPoint = schema.LookupPath(cue.ParsePath("#Catalog"))
-	case 3:
+	case consts.Layer3:
 		entryPoint = schema.LookupPath(cue.ParsePath("#PolicyDocument"))
-	case 4:
+	case consts.Layer4:
 		entryPoint = schema.LookupPath(cue.ParsePath("#EvaluationLog"))
 	}
 

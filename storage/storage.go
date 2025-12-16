@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/complytime/gemara-mcp-server/internal/consts"
 	"github.com/goccy/go-yaml"
 	"github.com/ossf/gemara/layer1"
 	"github.com/ossf/gemara/layer2"
@@ -41,7 +42,7 @@ func NewArtifactStorage(baseDir string) (*ArtifactStorage, error) {
 	}
 
 	// Ensure layer-specific directories exist
-	for layer := 1; layer <= 4; layer++ {
+	for layer := consts.MinLayer; layer <= consts.MaxLayer; layer++ {
 		layerDir := filepath.Join(baseDir, fmt.Sprintf("layer%d", layer))
 		if err := os.MkdirAll(layerDir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create layer%d directory: %w", layer, err)
@@ -57,11 +58,15 @@ func NewArtifactStorage(baseDir string) (*ArtifactStorage, error) {
 }
 
 // loadIndex scans the storage directories and builds the index
+// It starts with a clean index to ensure deleted/renamed files are removed
 func (s *ArtifactStorage) loadIndex() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for layer := 1; layer <= 4; layer++ {
+	// Start with a clean index to avoid stale entries from deleted/renamed files
+	s.index = make(map[string]*ArtifactIndexEntry)
+
+	for layer := consts.MinLayer; layer <= consts.MaxLayer; layer++ {
 		layerDir := filepath.Join(s.baseDir, fmt.Sprintf("layer%d", layer))
 		if entries, err := os.ReadDir(layerDir); err == nil {
 			for _, entry := range entries {
@@ -84,19 +89,19 @@ func (s *ArtifactStorage) loadIndex() error {
 				var title string
 
 				switch layer {
-				case 1:
+				case consts.Layer1:
 					guidance := &layer1.GuidanceDocument{}
 					if err := guidance.LoadFile(fmt.Sprintf("file://%s", absPath)); err == nil {
 						artifactID = guidance.Metadata.Id
 						title = guidance.Metadata.Title
 					}
-				case 2:
+				case consts.Layer2:
 					catalog := &layer2.Catalog{}
 					if err := catalog.LoadFile(fmt.Sprintf("file://%s", absPath)); err == nil {
 						artifactID = catalog.Metadata.Id
 						title = catalog.Metadata.Title
 					}
-				case 3:
+				case consts.Layer3:
 					policy := &layer3.PolicyDocument{}
 					if err := policy.LoadFile(fmt.Sprintf("file://%s", absPath)); err == nil {
 						artifactID = policy.Metadata.Id
@@ -121,8 +126,8 @@ func (s *ArtifactStorage) loadIndex() error {
 
 // Add stores an artifact to disk and adds it to the index
 func (s *ArtifactStorage) Add(layer int, artifactID string, artifact interface{}) error {
-	if layer < 1 || layer > 4 {
-		return fmt.Errorf("invalid layer: %d (must be 1-4)", layer)
+	if layer < consts.MinLayer || layer > consts.MaxLayer {
+		return fmt.Errorf("invalid layer: %d (must be %d-%d)", layer, consts.MinLayer, consts.MaxLayer)
 	}
 
 	if artifactID == "" {
@@ -135,7 +140,7 @@ func (s *ArtifactStorage) Add(layer int, artifactID string, artifact interface{}
 	// Determine file path
 	layerDir := filepath.Join(s.baseDir, fmt.Sprintf("layer%d", layer))
 	filename := fmt.Sprintf("%s.yaml", artifactID)
-	filePath := filepath.Join(layerDir, filename)
+	filePath := filepath.Clean(filepath.Join(layerDir, filename))
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve absolute path: %w", err)
@@ -155,15 +160,15 @@ func (s *ArtifactStorage) Add(layer int, artifactID string, artifact interface{}
 	// Extract title for index
 	var title string
 	switch layer {
-	case 1:
+	case consts.Layer1:
 		if g, ok := artifact.(*layer1.GuidanceDocument); ok {
 			title = g.Metadata.Title
 		}
-	case 2:
+	case consts.Layer2:
 		if c, ok := artifact.(*layer2.Catalog); ok {
 			title = c.Metadata.Title
 		}
-	case 3:
+	case consts.Layer3:
 		if p, ok := artifact.(*layer3.PolicyDocument); ok {
 			title = p.Metadata.Title
 		}
@@ -203,8 +208,8 @@ func (s *ArtifactStorage) List(layer int) []*ArtifactIndexEntry {
 
 // Retrieve loads an artifact from disk by layer and ID
 func (s *ArtifactStorage) Retrieve(layer int, artifactID string) (interface{}, error) {
-	if layer < 1 || layer > 4 {
-		return nil, fmt.Errorf("invalid layer: %d (must be 1-4)", layer)
+	if layer < consts.MinLayer || layer > consts.MaxLayer {
+		return nil, fmt.Errorf("invalid layer: %d (must be %d-%d)", layer, consts.MinLayer, consts.MaxLayer)
 	}
 
 	if artifactID == "" {
@@ -224,19 +229,19 @@ func (s *ArtifactStorage) Retrieve(layer int, artifactID string) (interface{}, e
 	fileURI := fmt.Sprintf("file://%s", entry.FilePath)
 
 	switch layer {
-	case 1:
+	case consts.Layer1:
 		guidance := &layer1.GuidanceDocument{}
 		if err := guidance.LoadFile(fileURI); err != nil {
 			return nil, fmt.Errorf("failed to load Layer 1 artifact: %w", err)
 		}
 		return guidance, nil
-	case 2:
+	case consts.Layer2:
 		catalog := &layer2.Catalog{}
 		if err := catalog.LoadFile(fileURI); err != nil {
 			return nil, fmt.Errorf("failed to load Layer 2 artifact: %w", err)
 		}
 		return catalog, nil
-	case 3:
+	case consts.Layer3:
 		policy := &layer3.PolicyDocument{}
 		if err := policy.LoadFile(fileURI); err != nil {
 			return nil, fmt.Errorf("failed to load Layer 3 artifact: %w", err)
@@ -266,8 +271,8 @@ func (s *ArtifactStorage) Rescan() error {
 // StoreRawYAML stores raw YAML content to disk and updates the index
 // This is the preferred method for storing artifacts as it preserves all YAML content without data loss
 func (s *ArtifactStorage) StoreRawYAML(layer int, yamlContent string) (string, error) {
-	if layer < 1 || layer > 4 {
-		return "", fmt.Errorf("invalid layer: %d (must be 1-4)", layer)
+	if layer < consts.MinLayer || layer > consts.MaxLayer {
+		return "", fmt.Errorf("invalid layer: %d (must be %d-%d)", layer, consts.MinLayer, consts.MaxLayer)
 	}
 
 	s.mu.Lock()

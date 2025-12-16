@@ -3,6 +3,7 @@ package authoring
 import (
 	"fmt"
 
+	"github.com/complytime/gemara-mcp-server/internal/consts"
 	"github.com/goccy/go-yaml"
 	"github.com/ossf/gemara/layer1"
 	"github.com/ossf/gemara/layer2"
@@ -12,8 +13,8 @@ import (
 // StoreValidatedYAML stores YAML content with CUE validation
 // This ensures all artifacts are validated before storage
 func (g *GemaraAuthoringTools) StoreValidatedYAML(layer int, yamlContent string) (string, error) {
-	if layer < 1 || layer > 4 {
-		return "", fmt.Errorf("invalid layer: %d (must be 1-4)", layer)
+	if layer < consts.MinLayer || layer > consts.MaxLayer {
+		return "", fmt.Errorf("invalid layer: %d (must be %d-%d)", layer, consts.MinLayer, consts.MaxLayer)
 	}
 
 	// Validate with CUE first
@@ -56,7 +57,7 @@ func (g *GemaraAuthoringTools) LoadAndValidateArtifact(layer int, artifactID str
 	// Convert to YAML for validation
 	var yamlContent string
 	switch layer {
-	case 1:
+	case consts.Layer1:
 		if guidance, ok := retrieved.(*layer1.GuidanceDocument); ok {
 			// Marshal back to YAML for validation
 			yamlBytes, err := yaml.Marshal(guidance)
@@ -67,7 +68,7 @@ func (g *GemaraAuthoringTools) LoadAndValidateArtifact(layer int, artifactID str
 		} else {
 			return fmt.Errorf("retrieved artifact is not a Layer 1 Guidance document")
 		}
-	case 2:
+	case consts.Layer2:
 		if catalog, ok := retrieved.(*layer2.Catalog); ok {
 			yamlBytes, err := yaml.Marshal(catalog)
 			if err != nil {
@@ -77,7 +78,7 @@ func (g *GemaraAuthoringTools) LoadAndValidateArtifact(layer int, artifactID str
 		} else {
 			return fmt.Errorf("retrieved artifact is not a Layer 2 Catalog")
 		}
-	case 3:
+	case consts.Layer3:
 		if policy, ok := retrieved.(*layer3.PolicyDocument); ok {
 			yamlBytes, err := yaml.Marshal(policy)
 			if err != nil {
