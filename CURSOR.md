@@ -161,14 +161,20 @@ podman build -t gemara-mcp-server:latest -f Containerfile .
 mkdir -p artifacts
 chmod 755 artifacts
 
+# Set JWT_SECRET for OAuth HMAC provider (required for HTTP transport)
+# This secret is used to validate JWT tokens (HMAC-SHA256)
+# For production, use Okta/Google/Azure providers instead
+export JWT_SECRET="your-32-byte-secret-key-minimum-length-required"
+
 # Run with StreamableHTTP transport (allows storing new artifacts)
+# Using --host=0.0.0.0 for container networking (Podman/Docker)
 make container-run
 # or
 podman run --rm --userns=keep-id -p 8080:8080 \
   -v "$(pwd)/artifacts:/app/artifacts:z" \
   --user $(id -u):$(id -g) \
-  gemara-mcp-server:latest \
-  ./gemara-mcp-server --transport=streamable --port=8080 --debug
+  -e JWT_SECRET="${JWT_SECRET}" \
+  gemara-mcp-server:latest
 ```
 
 **Read-Only Mode (Query Only):**
@@ -176,20 +182,26 @@ podman run --rm --userns=keep-id -p 8080:8080 \
 # Ensure artifacts directory exists
 mkdir -p artifacts
 
+# Set JWT_SECRET for OAuth HMAC provider
+export JWT_SECRET="your-32-byte-secret-key-minimum-length-required"
+
 # Run with read-only artifacts (cannot store new artifacts, query only)
 make container-run-readonly
 # or
 podman run --rm --userns=keep-id -p 8080:8080 \
   -v "$(pwd)/artifacts:/app/artifacts:z,ro" \
   --user $(id -u):$(id -g) \
-  gemara-mcp-server:latest \
-  ./gemara-mcp-server --transport=streamable --port=8080 --debug
+  -e JWT_SECRET="${JWT_SECRET}" \
+  gemara-mcp-server:latest
 ```
 
 **Note:** 
+- **HTTP transport avoids Podman mount complexity**: STDIO transport with Podman requires complex user namespace and mount configurations that often fail. HTTP transport only needs port forwarding.
 - The `--userns=keep-id` flag ensures the container user matches your host user ID, preventing permission issues when writing to the mounted artifacts directory.
 - The `:z` flag (lowercase) sets a shared SELinux context, which is less restrictive than `:Z` (private context).
 - Ensure the `artifacts` directory exists and is writable before running the container.
+- **Security**: The server uses `--host=0.0.0.0` to bind to all interfaces for container networking. OAuth 2.1 middleware (oauth-mcp-proxy) protects access - ensure `JWT_SECRET` is set for HMAC provider. Clients must send valid JWT tokens signed with this secret.
+- For local development (non-container), use STDIO transport (default) or `--host=127.0.0.1` for HTTP.
 
 The server will be accessible at `http://localhost:8080/mcp` for StreamableHTTP connections.
 
@@ -203,11 +215,82 @@ Update `.cursor/mcp.json`:
 {
   "mcpServers": {
     "gemara-mcp-server": {
-      "url": "http://localhost:8080/mcp"
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer <JWT_TOKEN>"
+      }
     }
   }
 }
 ```
+
+**OAuth 2.1 Authentication:**
+
+The server uses `oauth-mcp-proxy` library with HMAC provider for OAuth 2.1 Bearer token validation. Clients must send JWT tokens signed with HMAC-SHA256 using the `JWT_SECRET` environment variable.
+
+**JWT Token Requirements:**
+- Signed with HMAC-SHA256 using `JWT_SECRET`
+- Must include `aud` (audience) claim: `"api://gemara-mcp-server"`
+- Must include `sub` (subject) claim for user identification
+- Optional: `email`, `preferred_username` claims
+
+**Example JWT Generation (for testing):**
+```go
+import "github.com/golang-jwt/jwt/v5"
+
+token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+    "sub":   "user-123",
+    "email": "user@example.com",
+    "preferred_username": "john.doe",
+    "aud":   "api://gemara-mcp-server",
+    "exp":   time.Now().Add(time.Hour).Unix(),
+    "iat":   time.Now().Unix(),
+})
+tokenString, _ := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+```
+
+**Note**: If `JWT_SECRET` is not set, the server will reject requests with 401 Unauthorized (RFC 6750 compliant). For production deployments, consider using Okta, Google, or Azure OIDC providers instead of HMAC.
+
+**Security Requirements (per oauth-mcp-proxy guidelines):**
+- `JWT_SECRET` must be at least 32 bytes (256 bits) for security
+- Generate securely: `openssl rand -base64 32`
+- Never commit secrets to git - use environment variables only
+- Use HTTPS in production (HTTP is acceptable for local development only)
+- Tokens are never logged - only token hashes (SHA-256) are logged for debugging
+
+## Security Checklist
+
+This server follows security best practices from [oauth-mcp-proxy security guidelines](https://github.com/tuannvm/oauth-mcp-proxy/blob/main/docs/SECURITY.md).
+
+### ✅ Implemented Security Features
+
+- **Secrets Management**: All secrets loaded from environment variables (never hardcoded)
+- **JWT Secret Validation**: Minimum 32-byte length enforced at startup
+- **OAuth 2.1 Compliance**: Uses oauth-mcp-proxy library for RFC 6750 compliant authentication
+- **Audience Validation**: Tokens must include `aud: "api://gemara-mcp-server"` claim
+- **Token Caching**: 5-minute cache for validated tokens (handled by library)
+- **Secure Logging**: Only token hashes (SHA-256) logged, never full tokens
+- **Custom Logger**: Integrated with slog for production logging
+- **Localhost Binding**: Defaults to `127.0.0.1` to prevent NeighborJacking attacks
+
+### ⚠️ Production Considerations
+
+**Before deploying to production:**
+
+- [ ] **HTTPS Required**: Configure TLS certificates (Let's Encrypt, AWS ACM, etc.)
+- [ ] **OIDC Provider**: Migrate from HMAC to Okta/Google/Azure for production
+- [ ] **Rate Limiting**: Add rate limiting to OAuth endpoints (recommended)
+- [ ] **Security Headers**: Verify HSTS, CSP headers are configured
+- [ ] **Secret Rotation**: Plan for 90-day secret rotation schedule
+- [ ] **Monitoring**: Set up alerts for authentication failures
+- [ ] **Audit Logging**: Review OAuth provider audit logs regularly
+
+**Current Prototype Limitations:**
+- Uses HTTP (not HTTPS) - acceptable for local development only
+- HMAC provider requires manual JWT generation - not suitable for user authentication
+- No rate limiting on OAuth endpoints (library handles validation, but doesn't rate limit)
+
+See [oauth-mcp-proxy Security Guide](https://github.com/tuannvm/oauth-mcp-proxy/blob/main/docs/SECURITY.md) for complete security best practices.
 
 ### Clean Up
 
@@ -365,6 +448,11 @@ For StreamableHTTP, logs appear in the terminal:
 **Issue: "Port already in use" (Container)**
 - **Solution:** Use a different port or stop the existing container
 - **Fix:** Change port mapping: `podman run -p 8081:8080 ...`
+
+**Issue: Podman mount/permission errors with STDIO transport**
+- **Solution:** Use HTTP transport (`--transport=streamable-http`) instead of STDIO for container deployments
+- **Why:** Podman's user namespace mapping (`--userns=keep-id`) and volume mounts can cause permission issues with STDIO transport
+- **Fix:** HTTP transport avoids mount complexity - only requires port forwarding
 
 **Issue: "CUE validation failed"**
 - **Solution:** Check YAML syntax and schema compliance

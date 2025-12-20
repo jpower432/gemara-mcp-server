@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"os"
 
 	"github.com/complytime/gemara-mcp-server/tools/authoring"
 	"github.com/complytime/gemara-mcp-server/tools/info"
 	"github.com/complytime/gemara-mcp-server/tools/prompts"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	oauth "github.com/tuannvm/oauth-mcp-proxy"
+	"github.com/tuannvm/oauth-mcp-proxy/mark3labs"
 )
 
 type ServerConfig struct {
@@ -40,7 +44,6 @@ func NewServer(cfg *ServerConfig) (*Server, error) {
 		config: cfg,
 	}
 
-	// Create MCP server following OpenShift MCP patterns
 	mcpServer := server.NewMCPServer(
 		"gemara-mcp-server",
 		cfg.Version,
@@ -91,17 +94,69 @@ func (s *Server) ServeStdio() error {
 }
 
 func (s *Server) ServeStreamableHTTP() error {
-	slog.Info("Starting streamable HTTP server", "host", s.config.Host, "port", s.config.Port)
-
-	var opts []server.StreamableHTTPOption
-	if s.config.Logger != nil {
-		// Convert slog.Logger to util.Logger interface
-		adapter := &slogLoggerAdapter{logger: s.config.Logger}
-		opts = append(opts, server.WithLogger(adapter))
+	host := s.config.Host
+	if host == "" {
+		host = "0.0.0.0"
 	}
 
-	httpServer := server.NewStreamableHTTPServer(s.mcpServer, opts...)
-	return httpServer.Start(fmt.Sprintf("%s:%d", s.config.Host, s.config.Port))
+	mux := http.NewServeMux()
+
+	// Minimal OAuth setup for prototype
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		return fmt.Errorf("JWT_SECRET environment variable is required")
+	}
+
+	serverURL := fmt.Sprintf("http://%s:%d", host, s.config.Port)
+	oauthServer, oauthOption, err := mark3labs.WithOAuth(mux, &oauth.Config{
+		Provider:  "hmac",
+		Audience:  "api://gemara-mcp-server",
+		JWTSecret: []byte(jwtSecret),
+		ServerURL: serverURL,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to configure OAuth: %w", err)
+	}
+
+	// Create MCP server with OAuth middleware
+	mcpServerWithOAuth := server.NewMCPServer(
+		"gemara-mcp-server",
+		s.config.Version,
+		server.WithLogging(),
+		oauthOption,
+	)
+
+	// Register tools on OAuth-protected server
+	infoTools, err := info.NewGemaraInfoTools()
+	if err != nil {
+		return fmt.Errorf("failed to create info tools: %w", err)
+	}
+	infoTools.Register(mcpServerWithOAuth)
+
+	authoringTools, err := authoring.NewGemaraAuthoringTools()
+	if err != nil {
+		return fmt.Errorf("failed to create authoring tools: %w", err)
+	}
+	authoringTools.Register(mcpServerWithOAuth)
+
+	// Create StreamableHTTP server
+	streamableOpts := []server.StreamableHTTPOption{
+		server.WithHTTPContextFunc(oauth.CreateHTTPContextFunc()),
+	}
+	if s.config.Logger != nil {
+		adapter := &slogLoggerAdapter{logger: s.config.Logger}
+		streamableOpts = append(streamableOpts, server.WithLogger(adapter))
+	}
+
+	streamableServer := server.NewStreamableHTTPServer(mcpServerWithOAuth, streamableOpts...)
+	mux.HandleFunc("/mcp", oauthServer.WrapMCPEndpoint(streamableServer))
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", host, s.config.Port),
+		Handler: mux,
+	}
+
+	return srv.ListenAndServe()
 }
 
 // handleGemaraContextResource provides the Gemara context as a resource
@@ -129,3 +184,4 @@ func (a *slogLoggerAdapter) Infof(format string, v ...any) {
 func (a *slogLoggerAdapter) Errorf(format string, v ...any) {
 	a.logger.Error(fmt.Sprintf(format, v...))
 }
+

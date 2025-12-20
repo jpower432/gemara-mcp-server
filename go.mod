@@ -1,8 +1,8 @@
 module github.com/complytime/gemara-mcp-server
 
-go 1.24.0
+go 1.24.9
 
-toolchain go1.24.9
+toolchain go1.24.10
 
 require (
 	cuelang.org/go v0.15.1
@@ -11,6 +11,7 @@ require (
 	github.com/ossf/gemara v0.17.0
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
+	github.com/tuannvm/oauth-mcp-proxy v1.0.2
 )
 
 require (
@@ -18,9 +19,12 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
+	github.com/coreos/go-oidc/v3 v3.16.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/defenseunicorns/go-oscal v0.7.0 // indirect
 	github.com/emicklei/proto v1.14.2 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
