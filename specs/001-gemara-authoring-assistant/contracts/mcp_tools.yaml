@@ -1,0 +1,455 @@
+# MCP Tool Definitions: Gemara Artifact Authoring Assistant
+
+# Tool: parse_technical_evidence
+# Purpose: Parse technical evidence (config files, code) to extract security features
+# Journey: Auto-Documentation
+# FR: FR-002, FR-003
+
+parse_technical_evidence:
+  name: parse_technical_evidence
+  description: Parse technical evidence from configuration files and code to identify security features and control implementations. Supports multiple formats and parser types.
+  inputSchema:
+    type: object
+    properties:
+      source:
+        type: string
+        description: Source identifier (file path, git repo path, etc.)
+      content:
+        type: string
+        description: Raw content of the technical evidence
+      format:
+        type: string
+        enum: [yaml, json, text, markdown, dockerfile, kubernetes]
+        description: Format of the evidence content
+      parser_id:
+        type: string
+        description: Optional parser identifier. If not specified, auto-detect based on format.
+    required: [source, content, format]
+  outputSchema:
+    type: object
+    properties:
+      features:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            description:
+              type: string
+            capability_type:
+              type: string
+            configuration:
+              type: object
+      parser_used:
+        type: string
+      errors:
+        type: array
+        items:
+          type: string
+
+---
+
+# Tool: query_threat_library
+# Purpose: Query threat library to map capabilities to threats
+# Journey: Auto-Documentation
+# FR: FR-006
+
+query_threat_library:
+  name: query_threat_library
+  description: Query Gemara threat library to identify threats that map to given security capabilities. Returns threats with Layer 1 references.
+  inputSchema:
+    type: object
+    properties:
+      capability_types:
+        type: array
+        items:
+          type: string
+        description: List of capability types to map to threats
+      capability_names:
+        type: array
+        items:
+          type: string
+        description: Optional specific capability names for more precise matching
+    required: [capability_types]
+  outputSchema:
+    type: object
+    properties:
+      threats:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            description:
+              type: string
+            threat_category:
+              type: string
+            layer1_reference:
+              type: string
+            affected_capabilities:
+              type: array
+              items:
+                type: string
+
+---
+
+# Tool: validate_gemara_artifact
+# Purpose: Validate Gemara artifacts against schema with version support
+# Journey: All (validation step)
+# FR: FR-004, FR-005
+
+validate_gemara_artifact:
+  name: validate_gemara_artifact
+  description: Validate a Gemara artifact against the Gemara schema specification. Supports version selection for schema validation.
+  inputSchema:
+    type: object
+    properties:
+      artifact:
+        type: object
+        description: Gemara artifact to validate (Layer 1, 2, or 3)
+      layer:
+        type: integer
+        enum: [1, 2, 3]
+        description: Gemara layer (1=Guidance, 2=Controls, 3=Policies)
+      gemara_version:
+        type: string
+        description: Gemara specification version to use for validation (e.g., "1.0.0"). If not specified, use latest.
+    required: [artifact, layer]
+  outputSchema:
+    type: object
+    properties:
+      valid:
+        type: boolean
+      errors:
+        type: array
+        items:
+          type: object
+          properties:
+            path:
+              type: string
+            message:
+              type: string
+            severity:
+              type: string
+              enum: [error, warning]
+      warnings:
+        type: array
+        items:
+          type: object
+      schema_version_used:
+        type: string
+
+---
+
+# Tool: query_gemara_info
+# Purpose: Query stored Gemara information (Layer 1/2/3 artifacts)
+# Journey: All (info lookup)
+# FR: FR-006
+
+query_gemara_info:
+  name: query_gemara_info
+  description: Query stored Gemara information including Layer 1 guidance, Layer 2 catalogs, and Layer 3 policies. Supports search and retrieval operations.
+  inputSchema:
+    type: object
+    properties:
+      query_type:
+        type: string
+        enum: [layer1, layer2, layer3, search_layer2]
+        description: Type of query to perform
+      layer1_id:
+        type: string
+        description: Layer 1 guidance ID (for layer1 query)
+      layer2_id:
+        type: string
+        description: Layer 2 catalog ID (for layer2 query)
+      layer3_id:
+        type: string
+        description: Layer 3 policy ID (for layer3 query)
+      search_query:
+        type: object
+        description: Search parameters (for search_layer2 query)
+        properties:
+          technology_domain:
+            type: string
+          control_types:
+            type: array
+            items:
+              type: string
+          keywords:
+            type: array
+            items:
+              type: string
+    required: [query_type]
+  outputSchema:
+    type: object
+    properties:
+      results:
+        type: array
+        items:
+          type: object
+      count:
+        type: integer
+      query_metadata:
+        type: object
+
+---
+
+# Tool: search_inheritance_opportunities
+# Purpose: Search for existing Layer 2 catalogs that could be inherited
+# Journey: Inheritance Discovery
+# FR: FR-009, FR-010
+
+search_inheritance_opportunities:
+  name: search_inheritance_opportunities
+  description: Search existing Layer 2 catalogs to identify controls that match the current authoring context. Uses dependency information (SBOMs, CALM artifacts) to identify relationships.
+  inputSchema:
+    type: object
+    properties:
+      current_context:
+        type: object
+        properties:
+          technology_domain:
+            type: string
+          control_types:
+            type: array
+            items:
+              type: string
+          partial_controls:
+            type: array
+            items:
+              type: object
+      dependency_info:
+        type: object
+        properties:
+          sboms:
+            type: array
+            items:
+              type: string
+          architecture_diagrams:
+            type: array
+            items:
+              type: string
+          calm_artifacts:
+            type: array
+            items:
+              type: string
+      max_results:
+        type: integer
+        default: 10
+        description: Maximum number of suggestions to return
+    required: [current_context]
+  outputSchema:
+    type: object
+    properties:
+      suggestions:
+        type: array
+        items:
+          type: object
+          properties:
+            catalog_id:
+              type: string
+            catalog_name:
+              type: string
+            relevance_score:
+              type: number
+            matching_controls:
+              type: array
+              items:
+                type: object
+            reason:
+              type: string
+      total_found:
+        type: integer
+
+---
+
+# Tool: import_inherited_controls
+# Purpose: Import suggested inherited controls into current catalog
+# Journey: Inheritance Discovery
+# FR: FR-011
+
+import_inherited_controls:
+  name: import_inherited_controls
+  description: Import suggested inherited controls from a Layer 2 catalog into the current catalog being authored using the Gemara `imported-controls` field (`[...#MultiMapping]` structure with `@go(ImportedControls)` tag). Also supports `imported-threats` and `imported-capabilities` fields. Includes proper attribution with source catalog ID (via `reference-id` in MultiMapping), import timestamp, original control ID, and source catalog metadata.
+  inputSchema:
+    type: object
+    properties:
+      catalog_id:
+        type: string
+        description: ID of the catalog to import from
+      control_ids:
+        type: array
+        items:
+          type: string
+        description: Specific control IDs to import. If empty, import all matching controls.
+      target_artifact_id:
+        type: string
+        description: ID of the artifact to import controls into
+    required: [catalog_id, target_artifact_id]
+  outputSchema:
+    type: object
+    properties:
+      imported_controls:
+        type: array
+        items:
+          type: object
+      imported_count:
+        type: integer
+      skipped:
+        type: array
+        items:
+          type: string
+        description: Control IDs that were skipped (duplicates, conflicts, etc.)
+
+---
+
+# Tool: analyze_framework_pivot
+# Purpose: Compare existing controls against unstructured regulatory requirements
+# Journey: Framework Pivot
+# FR: FR-012, FR-013, FR-014
+
+analyze_framework_pivot:
+  name: analyze_framework_pivot
+  description: Analyze existing Layer 2 controls against unstructured regulatory requirements to identify coverage, gaps, and uncovered minimum requirements. Produces prioritized gap analysis report.
+  inputSchema:
+    type: object
+    properties:
+      layer2_controls:
+        type: array
+        items:
+          type: object
+        description: Existing Layer 2 controls to analyze
+      regulatory_requirements:
+        type: object
+        properties:
+          source:
+            type: string
+            description: Source of regulatory requirements (document name, URL, etc.)
+          content:
+            type: string
+            description: Unstructured requirement text
+          format:
+            type: string
+            enum: [text, pdf, markdown, html]
+        required: [source, content]
+      framework_name:
+        type: string
+        description: Name of the regulatory framework being analyzed
+      include_recommendations:
+        type: boolean
+        default: true
+        description: Whether to include actionable recommendations in the report
+    required: [layer2_controls, regulatory_requirements, framework_name]
+  outputSchema:
+    type: object
+    properties:
+      report_id:
+        type: string
+      framework:
+        type: string
+      generated_at:
+        type: string
+        format: date-time
+      covered_requirements:
+        type: array
+        items:
+          type: object
+      gaps:
+        type: array
+        items:
+          type: object
+          properties:
+            requirement:
+              type: object
+            priority:
+              type: string
+            reason:
+              type: string
+      partial_coverage:
+        type: array
+        items:
+          type: object
+      recommendations:
+        type: array
+        items:
+          type: object
+      confidence:
+        type: number
+        description: Overall confidence level (0.0-1.0)
+      uncovered_minimum_requirements:
+        type: array
+        items:
+          type: object
+
+---
+
+# Tool: generate_layer2_artifact
+# Purpose: Generate Layer 2 artifact from technical evidence (orchestrates auto-documentation)
+# Journey: Auto-Documentation
+# FR: FR-001 through FR-008
+
+generate_layer2_artifact:
+  name: generate_layer2_artifact
+  description: Orchestrate the auto-documentation journey: parse evidence, map threats, propose controls, validate against audit minimums, and generate validated Layer 2 artifact.
+  inputSchema:
+    type: object
+    properties:
+      technical_evidence:
+        type: array
+        items:
+          type: object
+          properties:
+            source:
+              type: string
+            content:
+              type: string
+            format:
+              type: string
+        description: Technical evidence to process
+      layer1_references:
+        type: array
+        items:
+          type: string
+        description: Optional Layer 1 guidance IDs to reference
+      gemara_version:
+        type: string
+        description: Gemara specification version for validation
+      artifact_metadata:
+        type: object
+        properties:
+          name:
+            type: string
+          version:
+            type: string
+          description:
+            type: string
+    required: [technical_evidence, artifact_metadata]
+  outputSchema:
+    type: object
+    properties:
+      artifact:
+        type: object
+        description: Generated Layer 2 artifact
+      validation_status:
+        type: string
+        enum: [valid, invalid, pending]
+      validation_errors:
+        type: array
+        items:
+          type: object
+      capabilities_identified:
+        type: integer
+      threats_mapped:
+        type: integer
+      controls_proposed:
+        type: integer
+      audit_gaps:
+        type: array
+        items:
+          type: object
