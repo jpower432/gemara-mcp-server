@@ -1,13 +1,13 @@
 # MCP Tool Definitions: Gemara Artifact Authoring Assistant
 
 # Tool: parse_technical_evidence
-# Purpose: Parse technical evidence (config files, code) to extract security features
+# Purpose: Parse technical evidence (config files, code) to extract capabilities
 # Journey: Auto-Documentation
 # FR: FR-002, FR-003
 
 parse_technical_evidence:
   name: parse_technical_evidence
-  description: Parse technical evidence from configuration files and code to identify security features and control implementations. Supports multiple formats and parser types.
+  description: Parse technical evidence from configuration files and code to identify capabilities and control implementations. Supports multiple formats and parser types.
   inputSchema:
     type: object
     properties:
@@ -28,7 +28,7 @@ parse_technical_evidence:
   outputSchema:
     type: object
     properties:
-      features:
+      capabilities:
         type: array
         items:
           type: object
@@ -160,8 +160,8 @@ query_gemara_info:
     properties:
       query_type:
         type: string
-        enum: [layer1, layer2, layer3, search_layer2]
-        description: Type of query to perform
+        enum: [layer1, layer2, layer3, search_layer2, threat_catalog, risk_catalog]
+        description: Type of query to perform. threat_catalog queries Threat Catalog (Layer 2). risk_catalog queries Risk Catalog (Layer 3).
       layer1_id:
         type: string
         description: Layer 1 guidance ID (for layer1 query)
@@ -396,7 +396,8 @@ analyze_framework_pivot:
 
 generate_layer2_artifact:
   name: generate_layer2_artifact
-  description: Orchestrate the auto-documentation journey: parse evidence, map threats, propose controls, validate against audit minimums, and generate validated Layer 2 artifact.
+  description: |
+    Orchestrate the auto-documentation journey - parse evidence, map threats, propose controls, validate against audit minimums, and generate validated Layer 2 artifact.
   inputSchema:
     type: object
     properties:

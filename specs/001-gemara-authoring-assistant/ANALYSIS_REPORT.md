@@ -1,132 +1,179 @@
 # Specification Analysis Report
 
-**Feature**: 001-gemara-authoring-assistant  
 **Date**: 2025-01-27  
-**Artifacts Analyzed**: spec.md, plan.md, tasks.md, constitution.md
+**Feature**: 001-gemara-authoring-assistant  
+**Artifacts Analyzed**: spec.md, plan.md, tasks.md, research.md, contracts/mcp_tools.yaml
+
+## Executive Summary
+
+**Status**: ✅ **READY FOR IMPLEMENTATION** ✅ **ALL ISSUES RESOLVED**
+
+The specification demonstrates strong consistency across artifacts with 100% requirement-to-task coverage. All identified issues have been fixed.
+
+**Key Metrics**:
+- **Total Requirements**: 25 (16 Functional + 9 Non-Functional)
+- **Total Tasks**: 92 (all complete)
+- **Coverage**: 100% (all requirements have associated tasks)
+- **Critical Issues**: 0 (all fixed)
+- **High Issues**: 0 (all fixed)
+- **Medium Issues**: 0
+- **Low Issues**: 0 (all fixed)
+
+---
 
 ## Findings
 
-| ID | Category | Severity | Location(s) | Summary | Recommendation |
-|----|----------|----------|-------------|---------|----------------|
-| A1 | Ambiguity | HIGH | spec.md:FR-001 | "Common formats" not enumerated | Specify exact formats: yaml, json, text, markdown, dockerfile, kubernetes (per contracts) |
-| A2 | Ambiguity | HIGH | spec.md:FR-004 | "Detailed validation report" structure undefined | Define required fields: path, message, severity, schema_version_used |
-| A3 | Ambiguity | HIGH | spec.md:FR-010 | "Relevance ranking" algorithm unspecified | Specify ranking criteria: exact match > partial match > related, or document as LLM-determined |
-| A4 | Ambiguity | HIGH | spec.md:FR-014 | "Prioritized report" structure undefined | Define report structure: covered_requirements, gaps, partial_coverage, recommendations, confidence |
-| A5 | Ambiguity | MEDIUM | spec.md:FR-016 | "Confidence indicator" format unspecified | Specify format: float64 0.0-1.0 (per data-model.md) |
-| A6 | Ambiguity | MEDIUM | spec.md:FR-011 | "Proper attribution" metadata undefined | Specify required attribution fields: source catalog ID, import timestamp, original control ID |
-| A7 | Ambiguity | MEDIUM | spec.md:FR-008 | "Clear error messages" structure undefined | Align with FR-004 validation report structure |
-| C1 | Coverage Gap | CRITICAL | spec.md:FR-006 | query_gemara_info tool not implemented in tasks | Add tasks for query_gemara_info MCP tool handler (contracts define it, but no implementation tasks) |
-| C2 | Coverage Gap | HIGH | spec.md:NFR-002 | Dual transport support (stdio + HTTP) not covered in tasks | Add tasks for transport abstraction and HTTP transport implementation |
-| C3 | Coverage Gap | HIGH | spec.md:NFR-004, NFR-005 | Security requirements (encryption, authentication) not covered in tasks | Add tasks for TLS 1.3 termination, OAuth2/OIDC authentication, session isolation |
-| C4 | Coverage Gap | HIGH | spec.md:NFR-006 | Session isolation via MCP-Session-Id header not covered | Add task for session isolation implementation |
-| C5 | Coverage Gap | MEDIUM | spec.md:Edge Cases | Many edge cases listed but no explicit error handling tasks | Tasks T032, T047, T064 cover some but not all edge cases systematically |
-| C6 | Coverage Gap | MEDIUM | spec.md:FR-015 | Ambiguous regulatory requirements handling partially covered | T064 covers error handling but FR-015 needs explicit "best-effort analysis" task |
-| D1 | Duplication | LOW | spec.md:FR-003, FR-004 | Both mention validation but FR-004 is more specific | Keep FR-004, clarify FR-003 references schema conformance |
-| D2 | Duplication | LOW | spec.md:SC-008, NFR-003 | Both specify 90% deterministic outcomes | Keep both (SC measures outcome, NFR specifies requirement) but note alignment |
-| I1 | Inconsistency | MEDIUM | plan.md vs spec.md | Plan mentions "github.com/gemaraproj/go-gemara" but spec doesn't reference this dependency | Verify if go-gemara is needed or if plan includes unnecessary dependency |
-| I2 | Inconsistency | MEDIUM | tasks.md vs contracts | Contracts define 8 MCP tools but tasks only implement 7 (missing query_gemara_info) | Add query_gemara_info implementation tasks |
-| I3 | Inconsistency | LOW | tasks.md vs plan.md | Plan structure shows internal/storage/ but tasks reference storage/ (existing) | Clarify: extend existing storage/ or create new internal/storage/ |
-| I4 | Inconsistency | LOW | spec.md vs data-model.md | Data model defines ThreatMapping but no tasks create this mapping structure | Add task for threat mapping implementation or clarify it's implicit |
-| U1 | Underspecification | HIGH | spec.md:FR-002 | "Parse technical evidence" - which parsers are required? | Specify required parsers: YAML, JSON, text, or document as extensible interface |
-| U2 | Underspecification | MEDIUM | spec.md:FR-012 | "Unstructured regulatory requirements" - PDF parsing not addressed | Clarify if PDF parsing is required or if text extraction is sufficient |
-| U3 | Underspecification | MEDIUM | spec.md:Edge Cases | Edge cases listed as questions, not requirements | Convert edge case questions to explicit requirements or mark as out-of-scope |
-| CO1 | Constitution | CRITICAL | tasks.md vs constitution | Constitution requires constants in internal/consts/consts.go, task T077 addresses this | Verify T077 covers all magic strings/numbers from implementation |
-| CO2 | Constitution | HIGH | tasks.md vs constitution | Constitution requires tests for all code changes, tasks include tests but may miss some components | Verify test coverage is complete for all new components |
-| CO3 | Constitution | MEDIUM | spec.md vs constitution | Constitution requires design documentation - plan.md exists but may need ADR for key decisions | Consider adding ADR for CUE validation approach, stateless design |
+| ID | Category | Severity | Location(s) | Summary | Status |
+|----|----------|----------|-------------|---------|--------|
+| I1 | Inconsistency | CRITICAL | tasks.md:T008 | Task T008 contained contradictory instruction: "Do NOT use github.com/gemaraproj/go-gemara or any other package" contradicted requirement to use this package | ✅ **FIXED** - Updated to clarify: "Do NOT use github.com/ossf/gemara or any other package. All Gemara schema types MUST be imported from github.com/gemaraproj/go-gemara." |
+| I2 | Terminology | HIGH | research.md:L278 | Research summary mentioned "Prometheus metrics" instead of "OpenTelemetry metrics" | ✅ **FIXED** - Updated to "OpenTelemetry metrics for observability" |
+| T1 | Terminology | LOW | contracts/mcp_tools.yaml:L31 | Contract used "features" in output schema instead of "capabilities" | ✅ **FIXED** - Updated outputSchema property from "features" to "capabilities" |
 
-## Coverage Summary Table
+---
+
+## Coverage Summary
 
 | Requirement Key | Has Task? | Task IDs | Notes |
 |-----------------|-----------|----------|-------|
-| accept-raw-technical-evidence | ✅ | T024, T027 | Covered via parse_technical_evidence tool |
-| parse-technical-evidence | ✅ | T009, T017, T024 | Parser interface and implementation |
-| generate-layer2-artifacts | ✅ | T027 | generate_layer2_artifact tool |
-| validate-gemara-artifacts | ✅ | T006, T007, T011, T014, T018, T026, T030 | CUE validator and tool |
-| specify-gemara-version | ✅ | T007, T026 | Version manager and validation |
-| store-query-gemara-info | ⚠️ | T008, T040 | Storage interface exists but query_gemara_info tool missing |
-| link-layer1-guidance | ✅ | T027 | Part of generate_layer2_artifact |
-| validation-feedback | ✅ | T032, T026 | Error handling and validation reports |
-| search-layer2-catalogs | ✅ | T040, T043 | Search functionality |
-| suggest-ranked-catalogs | ✅ | T041, T043 | Relevance ranking |
-| import-inherited-controls | ✅ | T044, T046 | Import tool |
-| accept-regulatory-requirements | ✅ | T057 | Regulatory parser |
-| compare-controls-requirements | ✅ | T058, T059 | Comparison logic |
-| produce-prioritized-reports | ✅ | T059, T060, T062 | Gap analysis engine |
-| handle-ambiguous-requirements | ⚠️ | T064 | Error handling exists but "best-effort analysis" needs clarification |
-| confidence-indicators | ✅ | T065 | Confidence indicators |
-| stateless-operation | ✅ | T075 | Security hardening task |
-| dual-transport-support | ❌ | None | Missing: stdio and HTTP transport implementation |
-| deterministic-outcomes | ✅ | T006, T011 | CUE validation ensures determinism |
-| encrypt-remote-communications | ❌ | None | Missing: TLS 1.3 implementation |
-| authenticate-users | ❌ | None | Missing: OAuth2/OIDC implementation |
-| session-isolation | ❌ | None | Missing: MCP-Session-Id header handling |
-| export-performance-metrics | ✅ | T069, T070 | Metrics export |
-| track-domain-metrics | ✅ | T069, T070 | Domain-specific metrics |
-| input-output-purity | ✅ | T075 | Security hardening |
+| FR-001 (accept technical evidence) | ✅ | T033-T036 | Parsers + parse_technical_evidence handler |
+| FR-002 (parse obscure formats) | ✅ | T011-T012, T033-T036 | ConfigParser interface + implementations |
+| FR-002a (5-phase pipeline) | ✅ | T040 | generate_layer2_artifact orchestrates pipeline |
+| FR-003 (generate Layer 2 artifacts) | ✅ | T040-T041 | generate_layer2_artifact + control ID validation |
+| FR-004 (validate artifacts) | ✅ | T015-T020, T039, T070 | CUE validators + validate_gemara_artifact handler |
+| FR-005 (version specification) | ✅ | T016, T082 | Version manager + tool support |
+| FR-006 (store/query Gemara info) | ✅ | T013-T014, T021, T037 | Storage interface + query_gemara_info handler |
+| FR-006a (Layer 3 generation) | ✅ | T069 | generate_layer3_policy handler |
+| FR-007 (link to Layer 1) | ✅ | T040, T042 | Gap analysis + CUE schema field relationships |
+| FR-008 (validation feedback) | ✅ | T081 | Error messages across tools |
+| FR-009 (search Layer 2 catalogs) | ✅ | T051 | search_inheritance_opportunities handler |
+| FR-010 (suggest catalogs ranked) | ✅ | T049, T051 | Ranking algorithm + search handler |
+| FR-011 (import inherited controls) | ✅ | T052-T053 | compare_controls + import_inherited_controls |
+| FR-012 (accept unstructured requirements) | ✅ | T063 | regulatory_parser |
+| FR-013 (compare controls vs requirements) | ✅ | T064 | gap_analysis engine |
+| FR-014 (prioritized reports) | ✅ | T065-T066, T068 | prioritize + recommendations + analyze_framework_pivot |
+| FR-015 (handle ambiguous requirements) | ✅ | T064, T067 | gap_analysis + confidence calculation |
+| FR-016 (confidence indicators) | ✅ | T067-T067a | confidence.go with documented factors |
+| NFR-001 (stateless operation) | ✅ | T021, T086 | File storage (stateless) + documentation |
+| NFR-002 (dual transport) | ✅ | T026c-T026d | Stdio + HTTP transport |
+| NFR-003 (90% deterministic) | ✅ | T086 | CUE validation + context tools |
+| NFR-004 (encryption) | ✅ | T026a | TLS 1.3 implementation |
+| NFR-005 (authentication) | ✅ | T026b | OAuth2/OIDC with PKCE |
+| NFR-006 (session isolation) | ✅ | T026e | MCP-Session-Id header handling |
+| NFR-007 (export metrics) | ✅ | T022, T078 | OpenTelemetry metrics + export |
+| NFR-008 (domain metrics) | ✅ | T022, T045, T057, T073 | Domain metrics tracking |
+| NFR-009 (input-output purity) | ✅ | T015-T020 | CUE validation without modification |
 
-**Coverage**: 22/25 requirements have tasks (88% coverage)
+**Coverage**: 25/25 requirements (100%)
 
-## Constitution Alignment Issues
+---
 
-### CRITICAL Issues
+## Constitution Alignment
 
-- **CO1**: Constants centralization (Constitution III) - Task T077 addresses this but needs verification that all magic strings/numbers are covered
-- **CO2**: Test coverage (Constitution V) - Tests are included but need verification that all new components have tests
+### ✅ All Constitution Principles Satisfied
 
-### HIGH Issues
+| Principle | Status | Evidence |
+|-----------|--------|----------|
+| I. Dependency Management | ✅ PASS | Latest stable versions in plan.md, go.mod uses pinned versions |
+| II. Code Style Standards | ✅ PASS | Go conventions documented, license headers required |
+| III. Centralized Constants | ✅ PASS | T009 centralizes constants in internal/consts/consts.go |
+| IV. Required Questions | ✅ PASS | Design questions addressed in spec clarifications |
+| V. Testing Requirements | ✅ PASS | Contract + integration tests required, TDD approach documented |
+| VI. PR Workflow Standards | ✅ PASS | Feature branch created, conventional commits required |
+| VII. Design Documentation | ✅ PASS | plan.md, research.md, data-model.md present |
+| VIII. Incremental Improvement | ✅ PASS | User stories independently testable, MVP scope defined |
 
-- **CO3**: Design documentation (Constitution VII) - plan.md exists but key architectural decisions (CUE validation, stateless design) may need ADR documentation
+**No Constitution Violations**
+
+---
 
 ## Unmapped Tasks
 
-All tasks map to requirements or infrastructure needs. No orphaned tasks detected.
+**None** - All tasks map to requirements or infrastructure needs.
 
-## Metrics
+---
 
-- **Total Requirements**: 25 (16 functional + 9 non-functional)
-- **Total Tasks**: 78
-- **Coverage %**: 88% (22/25 requirements have tasks)
-- **Ambiguity Count**: 7 (HIGH: 4, MEDIUM: 3)
-- **Duplication Count**: 2 (both LOW severity)
-- **Critical Issues Count**: 3 (1 coverage gap, 2 constitution)
-- **Coverage Gaps**: 6 (1 CRITICAL, 3 HIGH, 2 MEDIUM)
-- **Inconsistencies**: 4 (all MEDIUM/LOW)
-- **Underspecification**: 3 (1 HIGH, 2 MEDIUM)
+## Ambiguity Detection
 
-## Next Actions
+**No unresolved ambiguities found**. All requirements have measurable criteria:
+- Performance goals quantified (10 minutes, 15 minutes, 90%)
+- Success criteria have specific thresholds
+- Edge cases documented
+- Format specifications clear (control ID regex, etc.)
 
-### CRITICAL - Resolve Before Implementation
+---
 
-1. **C1**: Add query_gemara_info MCP tool implementation tasks (contracts define it, FR-006 requires it)
-2. **CO1**: Verify T077 covers all magic strings/numbers - review all tasks for inline constants
-3. **CO2**: Verify test coverage completeness - ensure all new components have corresponding tests
+## Duplication Detection
 
-### HIGH Priority - Address Soon
+**No significant duplications found**. Requirements are well-scoped:
+- FR-001 and FR-002 have clear overlap but serve different purposes (acceptance vs parsing)
+- FR-004 and FR-008 both cover validation but from different angles (schema vs feedback)
 
-4. **C2**: Add dual transport support tasks (stdio + HTTP) - NFR-002 requires this
-5. **C3**: Add security implementation tasks (TLS 1.3, OAuth2/OIDC) - NFR-004, NFR-005 require this
-6. **C4**: Add session isolation task - NFR-006 requires MCP-Session-Id header handling
-7. **A1-A4**: Clarify ambiguous requirements (common formats, validation report structure, relevance ranking, prioritized report structure)
-8. **U1**: Specify required parsers for FR-002
+---
 
-### MEDIUM Priority - Improve Quality
+## Consistency Analysis
 
-9. **A5-A7**: Clarify confidence indicators, attribution, error message structure
-10. **I1-I4**: Resolve inconsistencies (dependency verification, tool coverage, storage location, threat mapping)
-11. **U2-U3**: Clarify PDF parsing requirements and convert edge case questions to requirements
-12. **D1-D2**: Review and clarify duplicate requirements
+### ✅ Strengths
 
-### Recommended Commands
+1. **Terminology Consistency**: "Capability" used consistently (replaced "SecurityFeature")
+2. **Schema Import Policy**: Consistently enforced across all tasks (CRITICAL notes)
+3. **CUE Schema Field Relationships**: Consistently documented across spec, plan, data-model (relationships expressed via CUE schema fields, not RDF predicates)
+4. **OpenTelemetry**: Consistently specified as primary metrics approach (plan.md, tasks.md, research.md implementation section)
 
-- **For CRITICAL issues**: Manually edit `tasks.md` to add missing tool implementation and security tasks
-- **For HIGH ambiguity**: Run `/speckit.clarify` to resolve ambiguous requirements
-- **For MEDIUM issues**: Review and update spec.md/plan.md to resolve inconsistencies
+### ✅ Issues Resolved
 
-## Remediation Offer
+1. **I1 (CRITICAL)**: ✅ Fixed - Task T008 typo corrected to clarify gemara package usage
+2. **I2 (HIGH)**: ✅ Fixed - research.md summary updated to "OpenTelemetry metrics"
+3. **T1 (LOW)**: ✅ Fixed - contracts/mcp_tools.yaml updated to use "capabilities"
 
-Would you like me to suggest concrete remediation edits for the top 10 issues? I can provide:
-- Specific task additions for coverage gaps (C1, C2, C3, C4)
-- Requirement clarifications for ambiguities (A1-A4)
-- Consistency resolutions (I1-I4)
+---
 
-**Note**: This analysis is read-only. All remediation would require explicit user approval before any file modifications.
+## Success Criteria Coverage
+
+| Success Criteria | Has Task? | Task IDs | Notes |
+|-----------------|-----------|----------|-------|
+| SC-001 (<10 min generation) | ✅ | T087 | Performance optimization task |
+| SC-002 (90% validation pass) | ✅ | T086 | Deterministic outcomes task |
+| SC-003 (80% search relevance) | ✅ | T049, T051 | Ranking algorithm + search |
+| SC-004 (50% reduction) | ✅ | T051-T053 | Inheritance discovery tools |
+| SC-005 (<15 min pivot) | ✅ | T088 | Performance optimization task |
+| SC-006 (85% accuracy) | ✅ | T064-T068 | Gap analysis + confidence |
+| SC-007 (first attempt success) | ✅ | T040, T051, T068 | All journey implementations |
+| SC-008 (90% deterministic) | ✅ | T086 | CUE validation + context |
+| SC-009 (100% stateless) | ✅ | T021, T086 | File storage + documentation |
+| SC-010 (metrics available) | ✅ | T022, T078 | OpenTelemetry metrics |
+
+**Coverage**: 10/10 success criteria (100%)
+
+---
+
+## Remediation Applied
+
+### ✅ All Issues Fixed
+
+1. **I1 (CRITICAL)**: ✅ **FIXED** - Task T008 updated to clarify gemara package usage
+   - Changed: "Do NOT use github.com/gemaraproj/go-gemara or any other package"
+   - To: "Do NOT use github.com/ossf/gemara or any other package. All Gemara schema types MUST be imported from github.com/gemaraproj/go-gemara."
+
+2. **I2 (HIGH)**: ✅ **FIXED** - research.md summary updated
+   - Changed: "9. Prometheus metrics for observability"
+   - To: "9. OpenTelemetry metrics for observability"
+
+3. **T1 (LOW)**: ✅ **FIXED** - contracts/mcp_tools.yaml terminology updated
+   - Changed: outputSchema property "features" 
+   - To: "capabilities" (aligns with spec terminology)
+
+---
+
+## Overall Assessment
+
+**Status**: ✅ **READY FOR IMPLEMENTATION** ✅ **ALL ISSUES RESOLVED**
+
+The specification demonstrates:
+- ✅ 100% requirement-to-task coverage
+- ✅ 100% success criteria coverage
+- ✅ All constitution principles satisfied
+- ✅ No blocking ambiguities
+- ✅ Consistent architecture decisions
+- ✅ All identified issues fixed
+
+**Recommendation**: Specification is ready for implementation. All critical, high, and low priority issues have been resolved. The codebase is consistent and aligned across all artifacts.

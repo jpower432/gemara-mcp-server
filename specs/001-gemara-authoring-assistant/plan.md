@@ -7,50 +7,45 @@
 
 ## Summary
 
-Build a high-performance Go MCP Server that enables LLMs to automate the synthesis, mapping, and validation of Gemara security artifacts with deterministic precision. The server acts as a "Compliance Orchestrator" supporting three critical user journeys: Auto-Documentation (generate Layer 2 Catalog artifacts from technical evidence via 5-phase sequential pipeline), Inheritance Discovery (identify inherited controls), and Framework Pivot (assess technology against regulatory standards). The implementation leverages CUE for schema validation of all three Definition layers (Layer 1 GuidanceDocument, Layer 2 Catalog, Layer 3 Policy), provides config parsing interfaces, and operates statelessly with dual transport support (stdio for local IDEs, HTTP for cloud deployment). Layer 3 Policy generation is supported through scope definition with Layer 1 and Layer 2 applicability queried for context. Control IDs follow format `<identifier>-<numbering>` and are immutable once defined.
+MCP Server for authoring and validating Gemara Definition artifacts (Layers 1-3). Supports three journeys: (1) Auto-Documentation - generate Layer 2 artifacts from technical evidence via LLM-driven pipeline, (2) Inheritance Discovery - find and import existing Layer 2 catalogs, (3) Framework Pivot - analyze gaps between existing controls and new regulatory requirements. Uses CUE schema validation, file-based storage, and MCP protocol for stateless operation.
 
 ## Technical Context
 
 **Language/Version**: Go 1.24.0  
 **Primary Dependencies**: 
-- `cuelang.org/go` - CUE schema validation engine for all three Definition layers
-- `github.com/goccy/go-yaml` - YAML parsing for Gemara artifacts
-- `github.com/mark3labs/mcp-go` - MCP protocol implementation
-- `github.com/gemaraproj/go-gemara` - Gemara framework integration
-- `github.com/spf13/cobra` - CLI command structure
-- `github.com/stretchr/testify` - Testing framework
+- `github.com/mark3labs/mcp-go` v0.43.2 (MCP server framework)
+- `cuelang.org/go` v0.15.1 (CUE schema validation)
+- `github.com/gemaraproj/go-gemara` (Gemara schema types and definitions)
+- `github.com/spf13/cobra` v1.10.1 (CLI framework)
+- `github.com/stretchr/testify` v1.11.1 (testing)
+- `go.opentelemetry.io/otel` (observability - primary metrics API)
+- `go.opentelemetry.io/otel/exporters/prometheus` (optional Prometheus export)
 
-**Storage**: Stateless operation (NFR-001) - no persistence between requests. Gemara information storage uses interface-based design with lightweight file-based default implementation (FR-006). Query operations are request-scoped. Layer 1 (GuidanceDocument) artifacts are reference-only (query/storage), not authored by this system.
+**Storage**: File-based storage (`internal/storage/file_storage.go`) for Gemara artifacts (Layer 1, Layer 2, Layer 3). No database required - stateless operation per NFR-001.
 
-**Testing**: `github.com/stretchr/testify` for unit and integration tests. Contract tests for MCP tool interfaces. Integration tests for CUE validation workflows across all three Definition layers.
+**Testing**: `github.com/stretchr/testify` for unit, integration, and contract tests. Test structure: `tests/unit/`, `tests/integration/`, `tests/contract/`.
 
-**Target Platform**: Linux server (MCP server). Supports dual transport: stdio for local IDE integration (Cursor/VS Code) and HTTP for cloud-native deployment.
+**Target Platform**: Linux server (MCP server via stdio or HTTP transport). Supports local development and remote cloud deployment per NFR-002.
 
-**Project Type**: Single project - MCP server extension to existing gemara-mcp-server codebase
+**Project Type**: Single project (CLI/server application). Structure: `cmd/gemara-mcp-server/` (CLI), `mcp/` (MCP server), `tools/` (MCP tool handlers), `internal/` (core logic).
 
 **Performance Goals**: 
-- Generate validated Layer 2 Catalog artifacts in under 10 minutes (SC-001)
-- Generate Layer 3 Policy artifacts through scope definition in reasonable time
-- 90% deterministic artifact generation (NFR-003, SC-008)
-- Framework pivot gap analysis in under 15 minutes (SC-005)
-- High-performance request processing with stateless operation
+- Layer 2 artifact generation completes in under 10 minutes (SC-001)
+- Framework pivot gap analysis reports in under 15 minutes (SC-005)
+- 90% deterministic outcomes for artifact generation (NFR-003, SC-008)
 
 **Constraints**: 
 - Stateless operation - no data persistence between requests (NFR-001)
-- Input-output purity - validate structure without modifying LLM content (NFR-009)
-- Dual transport support required (local stdio + remote HTTP)
-- 90% deterministic outcomes for artifact generation
-- Encrypted remote communications (NFR-004)
-- Secure authentication required (NFR-005)
-- Scope limited to Definition layers (Layers 1-3); Measurement layers (Layers 4-6) explicitly out of scope
-- Control IDs MUST use format `<identifier>-<numbering>` (e.g., "AC-001", "SEC-042") and MUST NOT include family. Control IDs are immutable once defined until withdrawn
+- 90% deterministic outcomes when processing same input (NFR-003)
+- All remote communications encrypted (NFR-004)
+- User authentication required (NFR-005)
+- Logical isolation of request-scoped data between sessions (NFR-006)
 
 **Scale/Scope**: 
-- MCP server handling LLM-driven artifact authoring requests
-- Support for Layer 1 (GuidanceDocument - reference only), Layer 2 (Catalog - full authoring), and Layer 3 (Policy - generation via scope definition) Gemara artifacts
-- Validation support for all three Definition layers
-- Integration with external MCP servers (GitHub/GitLab) for technical evidence access
-- Config parsing interface for extensible evidence processing
+- MCP server handling multiple concurrent requests
+- Support for querying and storing Layer 1, Layer 2, Layer 3 artifacts
+- Processing technical evidence from Git repositories via external MCP servers
+- Generating and validating Gemara artifacts conforming to official schemas
 
 ## Constitution Check
 
@@ -58,43 +53,43 @@ Build a high-performance Go MCP Server that enables LLMs to automate the synthes
 
 ### I. Dependency Management ✅
 - **Status**: PASS
-- **Check**: Using latest stable versions from provided dependency list. Dependencies are well-maintained (CUE, go-yaml, mcp-go, go-gemara). Versions will be pinned in go.mod.
-- **Rationale**: All dependencies are stable, actively maintained projects with good adoption rates.
+- **Check**: All dependencies use latest stable versions, pinned in go.mod
+- **Rationale**: Dependencies are well-maintained, production-ready versions
 
 ### II. Code Style Standards ✅
 - **Status**: PASS
-- **Check**: Go code follows project conventions (lowercase_with_underscores file names, short package names). License headers required. `.golangci.yml` checks enforced.
-- **Rationale**: Existing codebase already follows Go conventions. New code will maintain consistency.
+- **Check**: Go code follows style guidelines (lowercase files, package naming, error handling, gofmt/goimports)
+- **Rationale**: Existing codebase demonstrates adherence to Go conventions
 
 ### III. Centralized Constants (NON-NEGOTIABLE) ✅
 - **Status**: PASS
-- **Check**: Constants will be placed in `internal/consts/consts.go` (already exists). No magic strings/numbers inline. Control ID format pattern will be centralized.
-- **Rationale**: Project already has constants structure. New constants will follow existing pattern.
+- **Check**: Constants centralized in `internal/consts/consts.go`
+- **Rationale**: Single source of truth for configuration values
 
 ### IV. Required Questions Before Implementation ✅
 - **Status**: PASS
-- **Check**: Design questions addressed in spec (user personas: compliance engineers, problem: automate artifact authoring). No data storage persistence (stateless operation).
-- **Rationale**: Specification clearly defines user needs and system behavior. Stateless design eliminates data lifecycle concerns.
+- **Check**: User personas and problems clearly defined in spec (compliance engineers, security teams)
+- **Rationale**: Specification includes user stories with clear personas and problems
 
 ### V. Testing Requirements ✅
 - **Status**: PASS
-- **Check**: Tests required for all code changes. Using testify framework. Contract tests for MCP tools, integration tests for validation workflows.
-- **Rationale**: Testing framework established. Test coverage will be maintained.
+- **Check**: Test structure exists (`tests/unit/`, `tests/integration/`, `tests/contract/`), testify used
+- **Rationale**: Testing infrastructure in place, TDD approach followed
 
 ### VI. PR Workflow Standards ✅
 - **Status**: PASS
-- **Check**: Feature branch created (`001-gemara-authoring-assistant`). PRs will follow conventional commits format.
-- **Rationale**: Standard workflow applies. No exceptions needed.
+- **Check**: Standard PR workflow applies, Conventional Commits format
+- **Rationale**: Repository follows standard Git workflow
 
 ### VII. Design Documentation ✅
 - **Status**: PASS
-- **Check**: Design decisions documented in plan.md, research.md, data-model.md. Architecture decisions will be documented.
-- **Rationale**: Planning phase includes design documentation. Decisions will be captured.
+- **Check**: Design decisions documented in `specs/001-gemara-authoring-assistant/` directory
+- **Rationale**: Specification and planning artifacts provide design context
 
 ### VIII. Incremental Improvement ✅
 - **Status**: PASS
-- **Check**: Feature is incremental addition to existing MCP server. Interface-based design allows extensibility.
-- **Rationale**: Extends existing functionality without breaking changes. Interface patterns enable future improvements.
+- **Check**: Feature broken into three independent user stories (P1, P2, P3)
+- **Rationale**: Incremental delivery approach enables independent testing and value delivery
 
 **Overall Status**: ✅ **PASS** - All constitution gates pass. Proceeding to Phase 0 research.
 
@@ -103,18 +98,12 @@ Build a high-performance Go MCP Server that enables LLMs to automate the synthes
 ### Documentation (this feature)
 
 ```text
-specs/001-gemara-authoring-assistant/
+specs/[###-feature]/
 ├── plan.md              # This file (/speckit.plan command output)
-├── spec.md             # Feature specification
 ├── research.md          # Phase 0 output (/speckit.plan command)
 ├── data-model.md        # Phase 1 output (/speckit.plan command)
 ├── quickstart.md        # Phase 1 output (/speckit.plan command)
 ├── contracts/           # Phase 1 output (/speckit.plan command)
-│   ├── mcp_tools.yaml   # MCP tool definitions
-│   └── api_schema.yaml  # API contract schema
-├── checklists/
-│   └── requirements.md  # Specification quality checklist
-├── ANALYSIS_REPORT.md   # Cross-artifact consistency analysis
 └── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
 ```
 
@@ -122,185 +111,246 @@ specs/001-gemara-authoring-assistant/
 
 ```text
 cmd/gemara-mcp-server/
-└── main.go              # Server entry point
+├── main.go              # CLI entry point
+└── root/
+    ├── cmd.go           # Root command
+    ├── serve.go         # Serve command (MCP server)
+    └── version.go       # Version command
 
 mcp/
 ├── server.go            # MCP server implementation
 └── server_test.go       # Server tests
 
 tools/
-├── authoring/           # Authoring tools (existing + new)
-│   ├── layer1.go
-│   ├── layer2.go
-│   ├── layer3.go        # NEW: Layer 3 Policy generation
+├── authoring/           # MCP tool handlers for authoring journeys
+│   ├── parse_evidence.go
+│   ├── generate_artifact.go
+│   ├── generate_policy.go
+│   ├── query_info.go
+│   ├── query_threats.go
+│   ├── validate_artifact.go
+│   ├── search_inheritance.go
+│   ├── import_controls.go
+│   ├── analyze_pivot.go
+│   ├── gap_analysis.go
+│   ├── prioritize.go
+│   ├── recommendations.go
+│   ├── confidence.go
+│   ├── compare_controls.go
+│   ├── error_handler.go
+│   ├── logging.go
 │   ├── register_tools.go
-│   ├── parse_evidence.go        # NEW: parse_technical_evidence tool
-│   ├── query_threats.go         # NEW: query_threat_library tool
-│   ├── validate_artifact.go     # NEW: validate_gemara_artifact tool (all 3 layers)
-│   ├── generate_artifact.go     # NEW: generate_layer2_artifact tool
-│   ├── generate_policy.go        # NEW: generate_layer3_policy tool (scope-based)
-│   ├── search_inheritance.go    # NEW: search_inheritance_opportunities tool
-│   ├── import_controls.go       # NEW: import_inherited_controls tool (uses imported-controls field)
-│   ├── analyze_pivot.go          # NEW: analyze_framework_pivot tool
-│   ├── error_handler.go         # NEW: Error handling
-│   ├── logging.go               # NEW: Logging
-│   ├── compare_controls.go      # NEW: Control comparison logic
-│   ├── gap_analysis.go          # NEW: Gap analysis engine
-│   ├── prioritize.go            # NEW: Prioritization logic
-│   ├── recommendations.go       # NEW: Recommendation generator
-│   ├── confidence.go            # NEW: Confidence indicators
-│   └── types.go                 # NEW: Shared types
-├── info/                # Info tools (existing)
+│   ├── register_prompts.go
+│   ├── utils.go
+│   └── test_helpers.go
+├── info/                # Info tool handlers
 │   ├── gemara_info.go
-│   ├── validation.go
-│   └── ...
-└── prompts/             # Prompt templates (existing)
-    ├── create-layer2.md
-    └── ...
+│   ├── resources.go
+│   ├── tools.go
+│   └── validation.go
+├── prompts/             # LLM prompt templates
+│   ├── create-layer1.md
+│   ├── create-layer2.md
+│   ├── create-layer3.md
+│   ├── gemara-context.md
+│   ├── quick-start.md
+│   └── prompts.go
+└── tools.go            # Tool registration
 
 internal/
 ├── consts/
-│   └── consts.go       # Centralized constants (including control ID format pattern)
-├── parsing/             # NEW: Config parsing interfaces
-│   ├── interface.go    # Parser interface
-│   ├── file_based.go    # File-based parser implementation
-│   ├── dependency_parser.go  # NEW: Dependency info parser (SBOMs, CALM)
-│   ├── regulatory_parser.go # NEW: Regulatory requirement parser
-│   ├── types.go        # NEW: Parsing-related types
+│   └── consts.go        # Centralized constants
+├── errors.go            # Error handling infrastructure
+├── metrics/             # Observability
+│   ├── metrics.go
+│   └── prometheus.go
+├── parsing/             # Technical evidence parsing
+│   ├── interface.go
+│   ├── types.go
+│   ├── file_based.go
+│   ├── dependency_parser.go
+│   ├── regulatory_parser.go
 │   └── parsers_test.go
-├── validation/          # NEW: Enhanced validation (all 3 layers)
-│   ├── cue_validator.go # CUE-based schema validator
-│   ├── layer1_validator.go # NEW: Layer 1 GuidanceDocument validator
-│   ├── layer2_validator.go # NEW: Layer 2 Catalog validator
-│   ├── layer3_validator.go # NEW: Layer 3 Policy validator
-│   ├── version_manager.go # Gemara spec version management
-│   ├── schemas.go      # CUE schema loading (all 3 layers)
-│   └── validator_test.go
-├── storage/             # NEW: Gemara info storage interface
-│   ├── interface.go     # Storage interface
-│   ├── file_storage.go  # File-based storage implementation
-│   ├── ranking.go       # NEW: Relevance ranking algorithm
-│   ├── types.go         # NEW: Storage-related types
+├── storage/             # Gemara artifact storage
+│   ├── interface.go
+│   ├── types.go
+│   ├── file_storage.go
+│   ├── ranking.go
 │   └── storage_test.go
-├── metrics/             # NEW: Observability
-│   ├── metrics.go       # Metrics definitions
-│   └── prometheus.go    # Prometheus integration
-└── errors.go            # NEW: Error handling infrastructure
+└── validation/          # CUE schema validation
+    ├── cue_validator.go
+    ├── schemas.go
+    ├── version_manager.go
+    ├── layer1_validator.go
+    ├── layer2_validator.go
+    ├── layer3_validator.go
+    ├── schemas/
+    │   └── README.md
+    └── validator_test.go
 
-storage/                 # Existing storage (may be extended)
+storage/                # Top-level storage interface
 ├── interface.go
 └── storage.go
 
 tests/
-├── contract/            # NEW: Contract tests for MCP tools
-│   ├── test_parse_technical_evidence.go
-│   ├── test_query_threat_library.go
-│   ├── test_validate_gemara_artifact.go
-│   ├── test_generate_layer2_artifact.go
-│   ├── test_generate_layer3_policy.go
-│   ├── test_search_inheritance.go
-│   ├── test_import_controls.go
-│   └── test_framework_pivot.go
-├── integration/         # NEW: Integration tests
-│   ├── test_auto_documentation.go
-│   ├── test_inheritance_discovery.go
-│   ├── test_framework_pivot.go
-│   └── test_layer3_policy_generation.go
-└── unit/                # Unit tests for new components
-    ├── parsing_test.go
-    ├── validation_test.go
-    ├── storage_test.go
-    └── gap_analysis_test.go
+├── contract/            # Contract tests for MCP tools
+│   ├── parse_technical_evidence_test.go
+│   ├── generate_layer2_artifact_test.go
+│   ├── generate_layer3_policy_test.go
+│   ├── query_gemara_info_test.go
+│   ├── query_threat_library_test.go
+│   ├── validate_gemara_artifact_test.go
+│   ├── search_inheritance_opportunities_test.go
+│   ├── import_inherited_controls_test.go
+│   ├── analyze_framework_pivot_test.go
+│   └── test_helpers.go
+├── integration/         # Integration tests
+│   ├── auto_documentation_test.go
+│   ├── inheritance_discovery_test.go
+│   ├── framework_pivot_test.go
+│   ├── layer1_layer3_validation_test.go
+│   └── layer3_policy_generation_test.go
+└── unit/                # Unit tests
+    └── validation_test.go
 ```
 
-**Structure Decision**: Extending existing single-project structure. New components organized under `internal/` following Go conventions. Authoring capabilities integrated into existing `tools/authoring/` directory. Validation expanded to support all three Definition layers. Layer 3 Policy generation tool added. Import functionality uses Gemara `imported-controls` field with MultiMapping structure. Control ID format validation and constants centralized. Test structure expanded to include contract and integration tests for all journeys and Layer 3 generation.
+**Structure Decision**: Single project structure with clear separation of concerns:
+- `cmd/` - CLI application entry points
+- `mcp/` - MCP server protocol implementation
+- `tools/` - MCP tool handlers organized by domain (authoring, info)
+- `internal/` - Core business logic (parsing, storage, validation)
+- `tests/` - Test suites organized by test type (contract, integration, unit)
 
 ## Complexity Tracking
 
 > **Fill ONLY if Constitution Check has violations that must be justified**
 
-No violations - all constitution gates pass. Interface-based design enables extensibility without violating simplicity principles.
+No violations - all constitution gates pass.
 
 ---
 
-## Phase 0: Research ✅
+## Phase 0: Outline & Research
 
-**Status**: Complete  
-**Output**: `research.md`
+**Status**: ✅ **COMPLETE**
 
-All research tasks completed. Key decisions documented:
-- MCP tool-based architecture with stateless operation
-- CUE validation for deterministic structural correctness (all three Definition layers)
-- Interface-based design for parsing and storage
-- Structured data flows for each journey (5-phase pipeline for Auto-Documentation)
-- Dual transport support (stdio + HTTP)
-- Prometheus metrics for observability
-- Gemara `imported-controls` field with MultiMapping structure for control inheritance
-- Layer 3 Policy generation via scope definition with Layer 1 and Layer 2 context
-- Control ID format: `<identifier>-<numbering>` (immutable, family-independent)
+All research tasks completed. Key decisions documented in `research.md`:
 
-No blocking clarifications remain.
+1. **MCP Server Architecture**: Use `github.com/mark3labs/mcp-go` framework with tool-based architecture for stateless LLM-server interaction
+2. **CUE Schema Validation**: Use `cuelang.org/go` with Gemara schema definitions for deterministic validation
+3. **Config Parsing Interface**: Extensible parser interface with file-based implementation - parsing ONLY for obscure formats (Dockerfile, Kubernetes), common formats (YAML, JSON, Markdown, text) passed directly to LLM
+4. **Gemara Schema Import**: CRITICAL - All Gemara schema types MUST be imported from `github.com/gemaraproj/go-gemara`. Schema types MUST NOT be redefined locally. If import fails, build MUST fail.
+5. **Storage Design**: File-based storage for Gemara artifacts (Layer 1, 2, 3) with query interface
+6. **Observability**: Use OpenTelemetry metrics API (`go.opentelemetry.io/otel/metric`) as primary instrumentation. Prometheus export (`go.opentelemetry.io/otel/exporters/prometheus`) is optional for compatibility.
+
+**Clarifications Resolved**:
+- Parsing strategy: Only parse obscure formats, pass common formats to LLM
+- Schema import policy: Strict requirement to import from go-gemara package
+- Storage approach: File-based, no database required
+- Observability: OTEL metrics primary, Prometheus optional
+
+**Output**: `research.md` complete with all decisions.
 
 ---
 
-## Phase 1: Design & Contracts ✅
+## Phase 1: Design & Contracts
 
-**Status**: Complete  
-**Outputs**: `data-model.md`, `contracts/mcp_tools.yaml`, `quickstart.md`
+**Status**: ✅ **COMPLETE**
 
 ### Data Model
-- 10 core entities defined (TechnicalEvidence, SecurityFeature, Threat, Control, Layer2Artifact, Layer2Catalog, Layer1Guidance, Layer3Policy, RegulatoryRequirement, GapAnalysisReport)
-- Supporting types and relationships documented
-- State transitions and validation rules specified
-- Import mechanism uses Gemara `imported-controls` field (`[...#MultiMapping]` structure) with `@go(ImportedControls)` tag
-- Layer 3 Policy entity added with scope definition and import relationships
-- MultiMapping structure documented for imported-controls, imported-threats, imported-capabilities
-- Control ID format constraint: `<identifier>-<numbering>`, immutable, family-independent
 
-### Contracts
-- 8 MCP tools defined with input/output schemas:
-  - `parse_technical_evidence` - Config parsing (FR-002, FR-003)
-  - `query_threat_library` - Threat mapping (FR-006)
-  - `validate_gemara_artifact` - Schema validation for all three Definition layers (FR-004, FR-005)
-  - `query_gemara_info` - Info storage queries (FR-006)
-  - `search_inheritance_opportunities` - Inheritance discovery (FR-009, FR-010)
-  - `import_inherited_controls` - Control import via Gemara `imported-controls` field (FR-011)
-  - `analyze_framework_pivot` - Gap analysis (FR-012, FR-013, FR-014)
-  - `generate_layer2_artifact` - Auto-documentation orchestration (FR-001 through FR-008)
-  - `generate_layer3_policy` - Layer 3 Policy generation via scope definition (FR-006a)
+**Output**: `data-model.md` complete with:
+- Dual approach: Gemara-native schema structures + CUE schema field relationships
+- Entity definitions: TechnicalEvidence, Capability, Threat, Control, Layer2Artifact, Layer1Guidance, Layer3Policy
+- Supporting types: AttackPatternReference, ThreatReference, GuidelineReference, ComplianceTargetReference, ControlReference
+- Data flow pipelines for all three journeys
+- Validation rules and state transitions
+
+**Key Design Decisions**:
+- Use Gemara-native structures from official schemas
+- Express relationships via CUE schema fields (not RDF predicates)
+- Support both native schema validation and explicit relationship tracking
+
+### API Contracts
+
+**Output**: `contracts/mcp_tools.yaml` complete with:
+- MCP tool definitions for all three journeys
+- Input/output schemas for each tool
+- Error handling specifications
+- Tool dependencies and execution order
+
+**Tools Defined**:
+- Auto-Documentation: `parse_technical_evidence`, `query_threat_library`, `generate_layer2_artifact`, `validate_gemara_artifact`
+- Inheritance Discovery: `search_inheritance_opportunities`, `import_inherited_controls`
+- Framework Pivot: `analyze_framework_pivot`, `generate_layer3_policy`
+- Info Tools: `query_gemara_info`
 
 ### Quick Start Guide
+
+**Output**: `quickstart.md` complete with:
+- Prerequisites and setup instructions
 - Step-by-step examples for all three journeys
-- Common patterns and error handling
-- Best practices documented
-- Import workflow using Gemara `imported-controls` field with MultiMapping structure
-- Layer 3 Policy generation workflow
-- Control ID format examples and validation
+- Tool usage patterns and expected outputs
+- Integration scenarios with external MCP servers
 
-### Agent Context
-- Updated Cursor IDE context file with Go 1.24.0 and project structure
+### Agent Context Update
 
----
+**Status**: ⏳ **PENDING**
 
-## Phase 2: Task Breakdown
+Agent context update script will be run after Phase 1 completion to add new technology from current plan to agent-specific context files.
 
-**Status**: Complete  
-**Output**: `tasks.md` (generated by `/speckit.tasks`)
-
-Task breakdown completed with tasks organized by user story. All three journeys (Auto-Documentation, Inheritance Discovery, Framework Pivot) have complete task coverage. Layer 3 Policy generation tasks included. Control ID format validation tasks included.
+**Command**: `.specify/scripts/bash/update-agent-context.sh cursor-agent`
 
 ---
 
-## Post-Design Constitution Re-Check ✅
+## Phase 2: Implementation Planning
 
-**Status**: PASS
+**Status**: ⏳ **READY FOR TASKS**
 
-All constitution principles remain satisfied after design phase:
-- Dependency management: All dependencies are stable versions
-- Code style: Go conventions maintained
-- Constants: Centralized in internal/consts/consts.go (including control ID format pattern)
-- Testing: Comprehensive test coverage planned for all three Definition layers
-- Design documentation: Complete (plan.md, research.md, data-model.md, contracts/)
-- Incremental improvement: Extends existing codebase without breaking changes
+Phase 2 will be handled by `/speckit.tasks` command, which will break down the plan into concrete implementation tasks.
 
-**Overall Status**: ✅ **PASS** - Ready for implementation
+**Prerequisites Met**:
+- ✅ Research complete (Phase 0)
+- ✅ Design complete (Phase 1)
+- ✅ Contracts defined
+- ✅ Data model documented
+- ✅ Quick start guide available
+
+**Next Steps**:
+1. Run `/speckit.tasks` to generate task breakdown
+2. Begin implementation following task list
+3. Execute tests and validation
+4. Complete polish and documentation
+
+---
+
+## Post-Phase 1 Constitution Re-Check
+
+**Status**: ✅ **PASS**
+
+All constitution gates re-evaluated after Phase 1 design:
+
+- **Dependency Management**: ✅ All dependencies use latest stable versions, pinned in go.mod
+- **Code Style Standards**: ✅ Go conventions followed, constants centralized
+- **Centralized Constants**: ✅ `internal/consts/consts.go` used for all constants
+- **Required Questions**: ✅ User personas and problems clearly defined in spec
+- **Testing Requirements**: ✅ Test structure defined (unit, integration, contract)
+- **PR Workflow**: ✅ Standard workflow applies
+- **Design Documentation**: ✅ All design artifacts complete (research.md, data-model.md, contracts/)
+- **Incremental Improvement**: ✅ Three independent user stories enable incremental delivery
+
+**Overall Status**: ✅ **PASS** - Ready for Phase 2 task breakdown.
+
+---
+
+## Summary
+
+Implementation plan complete for Gemara Artifact Authoring Assistant. All research clarifications resolved, design artifacts generated. System focuses on LLM-assisted authoring with deterministic validation, supporting three user journeys: Auto-Documentation, Inheritance Discovery, and Framework Pivot. Ready for task breakdown and implementation.
+
+**Branch**: `001-gemara-authoring-assistant`  
+**Plan Path**: `/home/jpower/Documents/upstream-repos/gemara-mcp-server/specs/001-gemara-authoring-assistant/plan.md`  
+**Generated Artifacts**:
+- `research.md` - Phase 0 research decisions
+- `data-model.md` - Phase 1 data model design
+- `contracts/mcp_tools.yaml` - Phase 1 API contracts
+- `quickstart.md` - Phase 1 quick start guide
+- `plan.md` - This implementation plan

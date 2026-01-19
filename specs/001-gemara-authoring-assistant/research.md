@@ -47,51 +47,73 @@
 
 **Task**: Research interface patterns for extensible config parsing
 
-**Decision**: Define Go interface for config parsers with file-based default implementation. Interface allows pluggable parsers for different evidence types (config files, code, documentation).
+**Decision**: Define Go interface for config parsers with file-based default implementation. Interface allows pluggable parsers for different evidence types. **IMPORTANT**: Parsing is ONLY required for obscure formats that LLMs are not trained on. Common formats (YAML, JSON, Markdown, plain text) are passed directly to the LLM without parsing. Parsers are only invoked for formats like Dockerfile, Kubernetes manifests, or other specialized formats.
 
 **Rationale**:
-- Interface pattern enables extensibility (FR-003 requirement)
+- LLMs excel at processing common text formats directly
+- Parsing only needed for formats LLMs can't process natively
+- Interface pattern enables extensibility (FR-002 requirement)
 - File-based default provides lightweight implementation
 - Allows future parsers for SBOMs, CALM artifacts, etc.
 - Stateless operation - parsers process input without state
 
 **Alternatives Considered**:
+- Always parse all formats: Rejected - Unnecessary overhead for formats LLMs handle well
 - Monolithic parser: Rejected - Violates extensibility requirement
 - External parsing service: Rejected - Adds complexity, violates statelessness
 
 **Interface Design**:
 ```go
 type ConfigParser interface {
-    ParseEvidence(source string, content []byte) ([]SecurityFeature, error)
+    ParseEvidence(source string, content []byte) ([]Capability, error)
     SupportedFormats() []string
 }
 ```
+
+**Format Classification**:
+- **Common formats (LLM direct)**: YAML, JSON, Markdown, plain text
+- **Obscure formats (require parsing)**: Dockerfile, Kubernetes manifests, specialized config formats
 
 ### 4. Gemara Info Storage Interface
 
 **Task**: Research storage patterns for queryable Gemara information (Layer 1/2/3 artifacts)
 
-**Decision**: Define storage interface with file-based implementation. Storage provides query capabilities for Layer 1 guidance, Layer 2 catalogs, Layer 3 policies. Stateless operation - storage queries are request-scoped.
+**Decision**: Define storage interface with file-based implementation. Storage provides query capabilities for Layer 1 guidance, Layer 2 catalogs (including Threat Catalogs), Layer 3 policies (including Risk Catalogs). Threat Catalog (Layer 2) stores threats queried via threat library. Risk Catalog (Layer 3) stores organization risks similar to a risk register, linking to threats with impact vs probability context. Stateless operation - storage queries are request-scoped.
 
 **Rationale**:
 - Interface enables different storage backends (file, in-memory, future: database)
 - File-based default aligns with lightweight deployment
 - Query interface supports inheritance discovery and framework pivot journeys
+- Threat Catalog provides threat library data for Auto-Documentation journey
+- Risk Catalog provides risk context (though not directly used in Framework Pivot since it only introduces noncompliance risk)
 - Stateless - no persistence between requests
+
+**Authoring vs Query Scope**:
+- Layer 1 (GuidanceDocument): Reference-only (query/storage), not authored
+- Layer 2 Control Catalog: Full authoring support
+- Layer 2 Threat Catalog: Reference-only (query/storage), not authored
+- Layer 3 Policy: Full authoring support
+- Layer 3 Risk Catalog: Reference-only (query/storage), not authored
 
 **Alternatives Considered**:
 - Database storage: Deferred - File-based sufficient for MVP, can add later
 - In-memory only: Rejected - Need to load existing artifacts for queries
+- Author Threat/Risk Catalogs: Rejected - These are organizational assets that exist independently
 
 **Interface Design**:
 ```go
 type GemaraStorage interface {
     QueryLayer1(guidanceID string) (*Layer1Guidance, error)
     QueryLayer2(catalogID string) (*Layer2Catalog, error)
+    QueryThreatCatalog(catalogID string) (*ThreatCatalog, error)
+    QueryRiskCatalog(catalogID string) (*RiskCatalog, error)
     SearchLayer2(query SearchQuery) ([]*Layer2Catalog, error)
+    QueryThreatLibrary(capabilities []string) ([]*ThreatMatch, error)
     LoadArtifact(path string) (Artifact, error)
 }
 ```
+
+**Query Mechanism**: query_threat_library tool queries Threat Catalog (Layer 2) via query_gemara_info with query_type="threat_catalog". query_gemara_info supports query_type="risk_catalog" for Risk Catalog queries.
 
 ### 5. Auto-Documentation Journey Data Flow
 
@@ -106,7 +128,7 @@ type GemaraStorage interface {
 - CUE validation ensures structural correctness
 
 **Data Flow**:
-1. **Capability Definition** (FR-003): Config parser extracts security features/capabilities
+1. **Capability Definition** (FR-003): Config parser extracts capabilities
 2. **Threat Mapping** (FR-006): Query threat library from Gemara info storage
 3. **Control Selection**: LLM proposes controls based on threats
 4. **Audit Gap Analysis** (FR-004, FR-006): Validate against Layer 1 guidance (NIST 800-53 minimums)
@@ -138,21 +160,25 @@ type GemaraStorage interface {
 
 **Task**: Research patterns for comparing existing controls against unstructured regulatory requirements
 
-**Decision**: Use LLM to extract structured requirements from unstructured text. Compare against existing Layer 2 controls. Generate gap analysis report with priorities.
+**Decision**: Use LLM to extract structured requirements from unstructured text. Compare against existing Layer 2 controls. Generate gap analysis report with priorities. **IMPORTANT**: Risk Catalogs are NOT directly used in Framework Pivot analysis since framework pivot only introduces noncompliance risk (not new threats). Risk Catalogs link to threats with impact vs probability context, which is not relevant for compliance gap analysis.
 
 **Rationale**:
 - LLM excels at extracting structure from unstructured text
 - Comparison against existing controls identifies coverage
 - Prioritization enables focused compliance efforts
 - Report format supports audit readiness
+- Framework pivot introduces compliance gaps, not new threats
+- Risk Catalogs focus on threat-based risk (impact × probability), not compliance risk
 
 **Analysis Flow**:
 1. Parse unstructured regulatory requirements (PDF, text, web)
 2. Extract structured requirements using LLM
 3. Compare against existing Layer 2 controls
 4. Identify gaps and partial coverage
-5. Prioritize by criticality
+5. Prioritize by criticality (noncompliance risk)
 6. Generate actionable report
+
+**Note**: Risk Catalogs may be queried for general risk context but are not part of the gap analysis algorithm since compliance gaps don't introduce new threats.
 
 ### 8. Dual Transport Support (Stdio + HTTP)
 
@@ -194,13 +220,24 @@ type GemaraStorage interface {
 
 **Task**: Research metrics patterns for MCP server observability
 
-**Decision**: Export Prometheus-compatible metrics. Track domain-specific metrics: `gemara_mapping_success_rate`, `gemara_schema_validation_failures_total`. Integrate with central collector.
+**Decision**: Use OpenTelemetry metrics API as primary instrumentation mechanism. Track domain-specific metrics: `gemara_mapping_success_rate`, `gemara_schema_validation_failures_total`. Prometheus export available as optional exporter if needed. Integrate with central collector.
 
 **Rationale**:
-- Prometheus standard for metrics collection
+- OpenTelemetry provides vendor-neutral observability instrumentation (metrics, traces, logs)
+- OTEL metrics API is the primary, native approach for metrics instrumentation
+- Prometheus export available as optional exporter for compatibility if required
+- Unified instrumentation framework simplifies observability implementation
 - Domain metrics track feature-specific outcomes
 - Central collector enables monitoring and alerting
 - Aligns with NFR-007 and NFR-008 requirements
+
+**Implementation**:
+- Use `go.opentelemetry.io/otel` for core instrumentation
+- Use `go.opentelemetry.io/otel/metric` for primary metrics instrumentation
+- Use `go.opentelemetry.io/otel/exporters/prometheus` as optional exporter if Prometheus compatibility needed
+- Instrument MCP tool handlers, validation operations, and storage queries
+- Export traces for request flow analysis
+- Export logs via OpenTelemetry logging bridge
 
 **Metrics Design**:
 - Counter: `gemara_schema_validation_failures_total` (by version, layer)
@@ -233,9 +270,13 @@ All research tasks completed. Key decisions:
 1. MCP tool-based architecture with stateless operation
 2. CUE validation for deterministic structural correctness
 3. Interface-based design for parsing and storage (extensibility)
-4. Structured data flows for each journey (5-phase pipeline for Auto-Documentation)
-5. Dual transport support (stdio + HTTP)
-6. Prometheus metrics for observability
-7. Control ID format: `<identifier>-<numbering>` (immutable, family-independent)
+4. Parsing only for obscure formats LLMs aren't trained on; common formats pass directly to LLM
+5. Threat Catalog (Layer 2) and Risk Catalog (Layer 3) are query-only (reference/storage), not authored
+6. query_threat_library queries Threat Catalog via query_gemara_info with query_type="threat_catalog"
+7. Structured data flows for each journey (5-phase pipeline for Auto-Documentation)
+8. Dual transport support (stdio + HTTP)
+9. OpenTelemetry metrics for observability
+10. Control ID format: `<identifier>-<numbering>` (immutable, family-independent)
+11. Risk Catalogs not directly used in Framework Pivot (only noncompliance risk, not new threats)
 
 No blocking clarifications remain. Ready for Phase 1 design.

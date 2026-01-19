@@ -38,7 +38,7 @@ Input:
   format: "yaml"
 ```
 
-**Expected Output**: List of security features extracted (e.g., "Non-root user execution", "Security context enforcement")
+**Expected Output**: List of capabilities extracted (e.g., "Non-root user execution", "Security context enforcement")
 
 ### Step 2: Map Capabilities to Threats
 

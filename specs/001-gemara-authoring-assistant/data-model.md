@@ -4,6 +4,20 @@
 **Feature**: 001-gemara-authoring-assistant  
 **Status**: Phase 1 Design
 
+## Design Approach
+
+This data model uses a **dual approach** to align with Gemara's lexicon and schemas:
+
+1. **Gemara-Native Schema Structure**: All entities conform to Gemara's native schema structures from the official schemas (https://github.com/gemaraproj/gemara/tree/main). This ensures structural compatibility and validation.
+
+2. **CUE Schema Field Relationships**: All relationships are expressed through CUE schema structures (per Layer Structure Table in spec.md). These are CUE schema field names, not RDF predicates:
+   - Threat "identifiedBy" Attack Pattern (Layer 2) - expressed via CUE schema field
+   - Control "mitigates" Threat (Layer 2) - expressed via CUE schema field
+   - Control "satisfies" Guideline (Layer 2) - expressed via CUE schema field
+   - Guideline "establishes" Compliance Target (Layer 1) - expressed via CUE schema field
+
+This dual approach ensures the codebase declaratively reflects Gemara's specification while maintaining both structural correctness (via native schemas) and semantic clarity (via CUE schema field relationships).
+
 ## Entities
 
 ### Technical Evidence
@@ -19,7 +33,7 @@
 
 **Relationships**:
 - Processed by: ConfigParser (many-to-one)
-- Generates: SecurityFeature (one-to-many)
+- Generates: Capability (one-to-many)
 - Used in: Auto-Documentation Journey
 
 **Validation Rules**:
@@ -31,13 +45,13 @@
 
 ---
 
-### SecurityFeature
+### Capability
 
-**Description**: Extracted security capability or feature identified from technical evidence.
+**Description**: Extracted security capability identified from technical evidence. Aligned with Gemara lexicon capability definitions.
 
 **Attributes**:
 - `ID`: string - Unique identifier
-- `Name`: string - Feature name (e.g., "Full-disk encryption via LUKS")
+- `Name`: string - Capability name (e.g., "Full-disk encryption via LUKS")
 - `Description`: string - Detailed description
 - `EvidenceRef`: string - Reference to source TechnicalEvidence
 - `CapabilityType`: string - Type of capability (encryption, authentication, access_control, etc.)
@@ -57,9 +71,9 @@
 
 ### Threat
 
-**Description**: Security threat identified from threat library that maps to capabilities.
+**Description**: Security threat identified from threat library. Uses Gemara-native Threat structure from schemas AND CUE schema field relationships. Relationships are expressed through CUE schema structures, not RDF triples.
 
-**Attributes**:
+**Attributes** (per Gemara-native Threat structure from schemas):
 - `ID`: string - Threat identifier (from Gemara threat library)
 - `Name`: string - Threat name (e.g., "Physical theft of storage media")
 - `Description`: string - Threat description
@@ -67,44 +81,59 @@
 - `Layer1Reference`: string - Reference to Layer 1 guidance document
 - `AffectedCapabilities`: []string - Capability types this threat affects
 
-**Relationships**:
-- Mapped from: SecurityFeature (many-to-many via ThreatMapping)
-- Mitigated by: Control (many-to-many)
+**CUE Schema Field Relationships** (expressed through CUE schema structures):
+- `identifiedBy`: AttackPatternReference - CUE schema field: Threat "identifiedBy" Attack Pattern (MITRE ATT&CK). Expressed via CUE schema field, not RDF predicate. Per Gemara Layer 2 CUE schema model.
+- `mitigatedBy`: []ControlReference - CUE schema field: Control "mitigates" Threat (reverse relationship). Expressed via CUE schema field, not RDF predicate. Per Gemara Layer 2 CUE schema model.
+
+**Supporting Types**:
+- `AttackPatternReference`: Contains Attack Pattern ID (MITRE ATT&CK) and relationship metadata per Gemara schema
+- `ControlReference`: Contains Control ID and relationship metadata per Gemara schema
+
+**Relationships** (additional context):
+- Mapped from: Capability (many-to-many) - Capabilities map to threats via threat library queries
 - Referenced in: Layer1Guidance (many-to-one)
 
 **Validation Rules**:
 - ID must reference valid threat from Gemara library
+- identifiedBy.AttackPatternID must reference valid MITRE ATT&CK pattern
 - Layer1Reference must reference valid Layer 1 guidance
+- Structure must conform to Gemara Layer 2 Threat schema
 
-**Source**: Loaded from Gemara info storage (threat library)
+**Source**: Loaded from Threat Catalog (Layer 2) via query_gemara_info with query_type="threat_catalog"
 
 ---
 
 ### Control
 
-**Description**: Security control proposed or identified to mitigate threats.
+**Description**: Security control aligned with Gemara Layer 2 Control structure. Uses Gemara-native Control structure from schemas AND CUE schema field relationships. Relationships are expressed through CUE schema structures, not RDF triples.
 
-**Attributes**:
+**Attributes** (per Gemara-native Control structure from schemas):
 - `ID`: string - Control identifier. Format: `<identifier>-<numbering>` (e.g., "AC-001", "SEC-042"). MUST NOT include family in ID. Control IDs are immutable once defined until withdrawn, even if controls are reclassified into different families.
-- `Name`: string - Control name (e.g., "Mandatory TPM-backed encryption")
-- `Description`: string - Control description
-- `ControlType`: string - Type of control (preventive, detective, corrective)
-- `MitigatesThreats`: []string - Threat IDs this control mitigates
-- `Layer1Reference`: string - Reference to Layer 1 guidance (e.g., NIST 800-53 AC-3)
-- `AuditMinimums`: []string - Required audit minimums from Layer 1
+- `Title`: string - Control title/name (e.g., "Mandatory TPM-backed encryption")
+- `Objective`: string - Control objective/description
+- `Description`: string - Detailed control description
+- `Family`: string - Control family grouping
 - `Status`: string - Status (proposed, validated, imported)
 
-**Relationships**:
-- Mitigates: Threat (many-to-many)
-- References: Layer1Guidance (many-to-one)
+**CUE Schema Field Relationships** (expressed through CUE schema structures):
+- `mitigates`: []ThreatReference - CUE schema field: Control "mitigates" Threat (SPDX Mitigation). Expressed via CUE schema field, not RDF predicate. Per Gemara Layer 2 CUE schema model. Threat references this control mitigates.
+- `satisfies`: []GuidelineReference - CUE schema field: Control "satisfies" Guideline (Compliance Inheritance). Expressed via CUE schema field, not RDF predicate. Per Gemara Layer 2 CUE schema model. Guideline references this control satisfies for compliance inheritance.
+
+**Supporting Types**:
+- `ThreatReference`: Contains threat ID and relationship metadata per Gemara schema. Used in "mitigates" CUE schema field relationship.
+- `GuidelineReference`: Contains guideline ID (Layer 1 reference), compliance target, and relationship metadata per Gemara schema. Used in "satisfies" CUE schema field relationship.
+
+**Relationships** (additional context):
 - Part of: Layer2Artifact (many-to-one)
 - Inherited from: Layer2Catalog (many-to-one, optional)
 
 **Validation Rules**:
-- Name must not be empty
-- Must mitigate at least one threat
-- Layer1Reference must reference valid Layer 1 guidance
+- Title must not be empty
+- Must mitigate at least one threat (mitigates array must not be empty)
+- Satisfies array may reference Layer 1 guidelines for compliance inheritance
 - Status must be valid enum value
+- Structure must conform to Gemara Layer 2 Control schema
+- CUE schema field relationships must be valid per Gemara CUE schema model
 
 **State Transitions**:
 - `proposed` → `validated` (after CUE validation passes)
@@ -175,28 +204,37 @@
 
 ### Layer1Guidance
 
-**Description**: Layer 1 guidance document providing compliance requirement minimums.
+**Description**: Layer 1 guidance document aligned with Gemara Layer 1 GuidanceDocument structure. Uses Gemara-native GuidanceDocument structure from schemas AND CUE schema field relationships. Relationships are expressed through CUE schema structures, not RDF triples.
 
-**Attributes**:
+**Attributes** (per Gemara-native GuidanceDocument structure from schemas):
 - `ID`: string - Guidance identifier
 - `Title`: string - Guidance title
 - `Description`: string - Guidance description
-- `Framework`: string - Framework name (e.g., "NIST 800-53")
+- `Framework`: string - Framework name (e.g., "NIST 800-53", "CRA")
 - `Version`: string - Framework version
-- `AuditMinimums`: []AuditMinimum - Required audit minimums
-- `Threats`: []Threat - Threats referenced in this guidance
+- `Guidelines`: []Guideline - Guidelines in this guidance document
 
-**Relationships**:
-- Referenced by: Control (many-to-one)
+**CUE Schema Field Relationships** (expressed through CUE schema structures):
+- `establishes`: []ComplianceTargetReference - CUE schema field: Guideline "establishes" Compliance Target (CRA / NIST 800-53). Expressed via CUE schema field, not RDF predicate. Per Gemara Layer 1 CUE schema model. Compliance targets established by guidelines.
+- `satisfiedBy`: []ControlReference - CUE schema field: Control "satisfies" Guideline (reverse relationship). Expressed via CUE schema field, not RDF predicate. Per Gemara Layer 2 CUE schema model. Controls that satisfy these guidelines.
+
+**Supporting Types**:
+- `Guideline`: Contains guideline ID, title, description per Gemara schema
+- `ComplianceTargetReference`: Contains compliance target identifier and relationship metadata per Gemara schema. Used in "establishes" CUE schema field relationship.
+- `ControlReference`: Contains Control ID and relationship metadata per Gemara schema. Used in "satisfiedBy" CUE schema field relationship.
+
+**Relationships** (additional context):
 - Referenced by: Threat (many-to-one)
-- Used in: Auto-Documentation Journey (audit gap analysis)
 
 **Validation Rules**:
 - ID must be unique
 - Framework must be valid
-- AuditMinimums must not be empty
+- Guidelines must not be empty
+- Establishes array contains compliance targets per Gemara CUE schema model
+- Structure must conform to Gemara Layer 1 GuidanceDocument schema
+- CUE schema field relationships must be valid per Gemara CUE schema model
 
-**Source**: Loaded from Gemara info storage
+**Source**: Loaded from Gemara info storage (reference-only, not authored by this system)
 
 ---
 
@@ -233,6 +271,67 @@
 - Generated through scope definition
 - Layer 1 guidance applicability queried to provide context
 - Layer 2 catalog applicability queried to provide context
+
+---
+
+### ThreatCatalog
+
+**Description**: Layer 2 Threat Catalog storing threats that can be queried via threat library. Threat Catalogs are reference-only (query/storage), not authored by this system.
+
+**Attributes**:
+- `ID`: string - Threat Catalog identifier
+- `Title`: string - Threat Catalog title
+- `Description`: string - Threat Catalog description
+- `Threats`: []Threat - List of threats in this catalog
+- `Metadata`: map[string]string - Additional metadata
+- `Source`: string - Source location (file path, URL, etc.)
+
+**Relationships**:
+- Contains: Threat (one-to-many)
+- Queried by: query_threat_library tool (via query_gemara_info with query_type="threat_catalog")
+
+**Validation Rules**:
+- ID must be unique
+- Must contain at least one threat
+- Must conform to Gemara Layer 2 Threat Catalog schema
+
+**Source**: Loaded from Gemara info storage (reference-only, not authored by this system)
+
+---
+
+### RiskCatalog
+
+**Description**: Layer 3 Risk Catalog storing organization risks. Risk Catalogs link to threats and are mitigated by controls. Risk Catalogs are reference-only (query/storage), not authored by this system. Risk Catalogs are NOT directly used in Framework Pivot analysis since framework pivot only introduces non-technical noncompliance risk (not new threats).
+
+**Attributes**:
+- `ID`: string - Risk Catalog identifier
+- `Title`: string - Risk Catalog title
+- `Description`: string - Risk Catalog description
+- `Risks`: []Risk - List of risks in this catalog
+- `Metadata`: map[string]string - Additional metadata
+- `Source`: string - Source location (file path, URL, etc.)
+
+**Risk Attributes**:
+- `ID`: string - Risk identifier
+- `ThreatID`: string - Reference to threat from Threat Catalog
+- `Impact`: string - Impact level (e.g., "high", "medium", "low")
+- `Probability`: string - Probability level (e.g., "high", "medium", "low")
+- `Description`: string - Risk description
+
+**Relationships**:
+- Contains: Risk (one-to-many)
+- Links to: Threat (many-to-one via ThreatID)
+- Queried by: query_gemara_info with query_type="risk_catalog"
+
+**Validation Rules**:
+- ID must be unique
+- Must contain at least one risk
+- Must conform to Gemara Layer 3 Risk Catalog schema
+- Risk ThreatID must reference valid threat from Threat Catalog
+
+**Source**: Loaded from Gemara info storage (reference-only, not authored by this system)
+
+**Note**: Risk Catalogs focus on threat-based risk assessment (impact × probability). Framework Pivot introduces compliance gaps (noncompliance risk), not new threats, so Risk Catalogs are not directly used in Framework Pivot gap analysis.
 
 ---
 
@@ -299,6 +398,34 @@
 - `Message`: string - Error message
 - `Severity`: string - Error severity (error, warning)
 
+### AttackPatternReference (per Gemara-native Threat structure)
+- `AttackPatternID`: string - Reference to MITRE ATT&CK pattern ID
+- `RelationshipMetadata`: map[string]interface{} - Additional relationship metadata per Gemara schema
+- Used in: Threat "identifiedBy" Attack Pattern CUE schema field relationship
+
+### ThreatReference (per Gemara-native Control structure)
+- `ThreatID`: string - Reference to threat ID
+- `RelationshipMetadata`: map[string]interface{} - Additional relationship metadata per Gemara schema
+- Used in: Control "mitigates" Threat CUE schema field relationship
+
+### GuidelineReference (per Gemara-native Control structure)
+- `GuidelineID`: string - Reference to Layer 1 guideline ID
+- `ComplianceTarget`: string - Compliance target established by guideline
+- `RelationshipMetadata`: map[string]interface{} - Additional relationship metadata per Gemara schema
+- Used in: Control "satisfies" Guideline CUE schema field relationship
+
+### ComplianceTargetReference (per Gemara-native GuidanceDocument structure)
+- `ComplianceTargetID`: string - Compliance target identifier
+- `Description`: string - Compliance target description
+- `Framework`: string - Framework source (e.g., "NIST 800-53", "CRA")
+- `RelationshipMetadata`: map[string]interface{} - Additional relationship metadata per Gemara schema
+- Used in: Guideline "establishes" Compliance Target CUE schema field relationship
+
+### ControlReference (per Gemara-native CUE schema field relationships)
+- `ControlID`: string - Reference to control ID
+- `RelationshipMetadata`: map[string]interface{} - Additional relationship metadata per Gemara schema
+- Used in: Control "satisfies" Guideline reverse relationship (satisfiedBy)
+
 ### AuditMinimum
 - `ID`: string - Minimum identifier (e.g., "AC-3")
 - `Description`: string - Minimum requirement description
@@ -321,12 +448,6 @@
 - `Priority`: string
 - `ActionItems`: []string
 
-### ThreatMapping
-- `SecurityFeatureID`: string
-- `ThreatID`: string
-- `Confidence`: float64
-- `Rationale`: string
-
 ### MultiMapping (for imported-controls)
 - `ReferenceID`: string - Reference ID pointing to source catalog/control (per Gemara `#MultiMapping` structure)
 - `Entries`: []MappingEntry - Array of mapping entries, each with `reference-id` field
@@ -337,11 +458,11 @@
 ## Data Flow Summary
 
 ### Auto-Documentation Journey
-1. TechnicalEvidence → ConfigParser → SecurityFeature
-2. SecurityFeature + ThreatLibrary → ThreatMapping → Threat
-3. Threat → LLM → Control (proposed)
-4. Control + Layer1Guidance → AuditMinimum validation
-5. Control → CUEValidator → Layer2Artifact (validated)
+1. TechnicalEvidence → (Parse if obscure format) OR (Pass directly to LLM if common format) → Capability
+2. Capabilities + ThreatCatalog (via query_gemara_info query_type="threat_catalog") → Threat (using Gemara-native structure AND "identifiedBy" Attack Pattern CUE schema field relationship)
+3. Threat → LLM → Control (proposed, using Gemara-native structure AND "mitigates" Threat CUE schema field relationship)
+4. Control + Layer1Guidance → Audit Gap Analysis (checks Control "satisfies" Guideline CUE schema field relationships against required compliance targets)
+5. Control → CUEValidator → Layer2Artifact (validated, conforms to Gemara-native schema with CUE schema field relationships)
 
 ### Inheritance Discovery Journey
 1. Partial Layer2Artifact + DependencyInfo → SearchQuery
@@ -350,8 +471,9 @@
 
 ### Framework Pivot Journey
 1. Layer2Artifact + RegulatoryRequirement → Comparison
-2. Comparison → GapAnalysisReport
+2. Comparison → GapAnalysisReport (noncompliance risk, not new threats)
 3. GapAnalysisReport → Recommendations
+4. Note: Risk Catalogs are NOT directly used since framework pivot only introduces noncompliance risk (not new threats)
 
 ---
 
